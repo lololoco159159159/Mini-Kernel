@@ -200,20 +200,13 @@ void destroy_ready_queue(ReadyQueue* queue) {
 
 void print_queue_debug(ReadyQueue* queue) {
     if (queue == NULL) {
-        printf("DEBUG: Queue é NULL\n");
-        return;
+        return; // Silencioso - apenas log em arquivo
     }
     
     pthread_mutex_lock(&queue->mutex);
     
-    printf("DEBUG: Fila de prontos (tamanho=%d): ", queue->size);
-    
-    QueueNode* current = queue->front;
-    while (current != NULL) {
-        printf("PID%d(P%d) ", current->pcb->pid, current->pcb->priority);
-        current = current->next;
-    }
-    printf("\n");
+    // Para debug interno apenas - sem printf no terminal
+    // Esta função pode ser usada para adicionar ao log se necessário
     
     pthread_mutex_unlock(&queue->mutex);
 }

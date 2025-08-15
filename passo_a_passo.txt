@@ -5,14 +5,14 @@ O que deve ser implementado:
     Target clean para apagar o executável.
     Testar a compilação básica.
 
-Passo 2 – Definir estruturas PCB, TCB e enums   ---feito
+Passo 2 – Definir estruturas PCB, TCB e enums 
 O que deve ser implementado:
     Enum com estados do processo (READY, RUNNING, FINISHED).
     Estrutura do PCB (campos definidos na especificação, mutex e variável de condição).
     Estrutura do TCB (ponteiro para PCB + índice da thread no processo).
     Garantir que essas estruturas reflitam todos os campos exigidos pela spec, pois serão base de todo o código.
 
-Passo 3 – Fila de prontos (ready queue)   ---feito
+Passo 3 – Fila de prontos (ready queue) 
 O que deve ser implementado:
     Estrutura de fila com mutex para proteger acesso concorrente.
     Funções para:
@@ -23,14 +23,15 @@ O que deve ser implementado:
     Escolher implementação (lista encadeada simples ou fila circular).
     Garantir controle de concorrência no acesso.
 
-Passo 4 – Funções de log
+Passo 4 – Funções de log 
 O que deve ser implementado:
     Buffer global para armazenar mensagens de log durante toda a simulação.
     Função para adicionar mensagens formatadas ao buffer.
     Função para salvar o conteúdo em arquivo no final (log_execucao_minikernel.txt).
     Nenhum printf para o terminal — apenas log em arquivo.
 
-Passo 5 – Leitura do arquivo de entrada e inicialização de PCBs
+
+Passo 5 – Leitura do arquivo de entrada e inicialização de PCBs 
 O que deve ser implementado:
     Abrir e ler o arquivo especificado na linha de comando.
     Ler número de processos.
@@ -38,6 +39,9 @@ O que deve ser implementado:
     Preencher a lista/array de PCBs:
         Inicializar remaining_time, estado inicial como READY, mutex, condicional, alocar vetor de threads.
     Ler política de escalonamento e armazenar numa variável global.
+
+
+================== feito ate aqui ^ ==================
 
 Passo 6 – Thread geradora de processos
 O que deve ser implementado:

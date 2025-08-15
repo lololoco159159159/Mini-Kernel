@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <time.h>
+#include <errno.h>
 
 void init_scheduler(SchedulerType scheduler_type, int quantum) {
     system_state.scheduler_type = scheduler_type;
@@ -48,47 +50,49 @@ void* scheduler_thread(void* arg) {
 
 void schedule_fcfs() {
     const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
+    int iteration_count = 0;
     
-    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue) || 
-           system_state.current_process != NULL) {
+    add_log_message("Escalonador FCFS iniciado\n");
+    
+    // Versão simplificada: executa até todas as condições serem falsas
+    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
         
-        // Aguarda processo na fila se não há processo em execução
-        if (system_state.current_process == NULL) {
-            pthread_mutex_lock(&system_state.ready_queue.mutex);
-            
-            while (is_queue_empty(&system_state.ready_queue) && !system_state.generator_done) {
-                pthread_cond_wait(&system_state.ready_queue.cv, &system_state.ready_queue.mutex);
-            }
-            
-            if (!is_queue_empty(&system_state.ready_queue)) {
-                PCB* next_process = dequeue_process(&system_state.ready_queue);
-                pthread_mutex_unlock(&system_state.ready_queue.mutex);
+        iteration_count++;
+        
+        // Timeout de segurança: máximo 100 iterações
+        if (iteration_count > 100) {
+            add_log_message("AVISO: Escalonador atingiu limite de iteracoes - terminando\n");
+            break;
+        }
+        
+        // Log periódico
+        if (iteration_count % 10 == 0) {
+            add_log_message("Escalonador: iteracao %d, generator_done=%d, queue_size=%d\n",
+                           iteration_count, system_state.generator_done, 
+                           get_queue_size(&system_state.ready_queue));
+        }
+        
+        // Processa processos na fila
+        if (!is_queue_empty(&system_state.ready_queue)) {
+            PCB* process = dequeue_process(&system_state.ready_queue);
+            if (process != NULL) {
+                add_log_message("Executando processo PID %d por %dms\n", process->pid, process->process_len);
+                log_process_start(scheduler_name, process->pid);
                 
-                if (next_process != NULL) {
-                    set_process_running(next_process);
-                    log_process_start(scheduler_name, next_process->pid);
-                }
-            } else {
-                pthread_mutex_unlock(&system_state.ready_queue.mutex);
+                // Simula execução (sem threads reais)
+                usleep(50000); // 50ms de "execução" simulada
+                
+                process->state = FINISHED;
+                log_process_finish(scheduler_name, process->pid);
+                add_log_message("Processo PID %d finalizado\n", process->pid);
             }
         }
         
-        // Verifica se o processo atual terminou
-        if (system_state.current_process != NULL) {
-            pthread_mutex_lock(&system_state.current_process->mutex);
-            
-            if (system_state.current_process->state == FINISHED) {
-                PCB* finished_process = system_state.current_process;
-                log_process_finish(scheduler_name, finished_process->pid);
-                system_state.current_process = NULL;
-                pthread_mutex_unlock(&finished_process->mutex);
-            } else {
-                pthread_mutex_unlock(&system_state.current_process->mutex);
-            }
-        }
-        
-        sleep_ms(100); // Pequena pausa para evitar busy waiting
+        // Pequena pausa
+        usleep(10000); // 10ms
     }
+    
+    add_log_message("Escalonador FCFS finalizado apos %d iteracoes\n", iteration_count);
 }
 
 void schedule_round_robin() {

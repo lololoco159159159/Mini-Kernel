@@ -3,39 +3,43 @@
 
 #include <pthread.h>
 
-// Estados dos processos
+// Estados dos processos - conforme especificação 2.8
 typedef enum {
-    READY,
-    RUNNING,
-    FINISHED
+    READY,                      // Processo pronto para execução
+    RUNNING,                    // Processo em execução
+    FINISHED                    // Processo finalizado
 } ProcessState;
 
-// Políticas de escalonamento
+// Políticas de escalonamento - conforme especificação seção 4.1
 typedef enum {
-    FCFS = 1,
-    ROUND_ROBIN = 2,
-    PRIORITY = 3
+    FCFS = 1,                   // First Come First Served
+    ROUND_ROBIN = 2,            // Round Robin com quantum fixo
+    PRIORITY = 3                // Prioridade Preemptiva
 } SchedulerType;
 
-// Estrutura BCP - Bloco de Controle de Processo
+// Estrutura BCP - Bloco de Controle de Processo (conforme seção 2.8)
 typedef struct {
-    int pid;                    // Identificador único do processo
-    int process_len;            // Duração total de execução (ms)
-    int remaining_time;         // Tempo restante de execução
-    int priority;               // Prioridade (1 = maior, 5 = menor)
-    int num_threads;            // Quantidade de threads do processo
-    int start_time;             // Tempo de chegada (ms)
+    // Campos estáticos (definidos na criação)
+    int pid;                    // Identificador único do processo (não confundir com getpid())
+    int process_len;            // Duração total de execução em milissegundos
+    int priority;               // Prioridade (1 = maior, 5 = menor prioridade)
+    int num_threads;            // Quantidade de threads que o processo irá utilizar
+    int start_time;             // Tempo de chegada em milissegundos (relativo ao início)
     
-    ProcessState state;         // Estado atual do processo
-    pthread_mutex_t mutex;      // Mutex para controle de acesso
-    pthread_cond_t cv;          // Variável de condição
-    pthread_t *thread_ids;      // Identificadores das threads
+    // Campos dinâmicos (modificados durante execução)
+    int remaining_time;         // Tempo restante de execução (decrementado pelas threads)
+    ProcessState state;         // Estado atual: READY, RUNNING ou FINISHED
+    
+    // Mecanismos de sincronização
+    pthread_mutex_t mutex;      // Mutex exclusivo para controlar acesso concorrente
+    pthread_cond_t cv;          // Variável de condição para sinalizar threads
+    pthread_t *thread_ids;      // Vetor com identificadores das threads do processo
 } PCB;
 
-// Estrutura TCB - Bloco de Controle de Thread
+// Estrutura TCB - Bloco de Controle de Thread (conforme seção 2.9)
 typedef struct {
-    PCB* pcb;                   // Ponteiro para o processo pai
-    int thread_index;           // Índice da thread no processo
+    PCB* pcb;                   // Ponteiro para o processo (BCP) ao qual a thread pertence
+    int thread_index;           // Índice/posição da thread dentro do processo
 } TCB;
 
 // Estrutura da fila de prontos

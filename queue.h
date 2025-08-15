@@ -58,4 +58,32 @@ int get_queue_size(ReadyQueue* queue);
  */
 void destroy_ready_queue(ReadyQueue* queue);
 
+/**
+ * Exibe o conteúdo da fila para debug (thread-safe)
+ * @param queue Ponteiro para a fila
+ */
+void print_queue_debug(ReadyQueue* queue);
+
+/**
+ * Insere um processo na fila mantendo ordem de prioridade
+ * @param queue Ponteiro para a fila
+ * @param pcb Ponteiro para o processo a ser adicionado
+ */
+void enqueue_process_by_priority(ReadyQueue* queue, PCB* pcb);
+
+/**
+ * Verifica se um processo específico está na fila
+ * @param queue Ponteiro para a fila
+ * @param pcb Ponteiro para o processo a ser procurado
+ * @return 1 se encontrado, 0 caso contrário
+ */
+int is_process_in_queue(ReadyQueue* queue, PCB* pcb);
+
+/**
+ * Remove e retorna o processo de maior prioridade da fila
+ * @param queue Ponteiro para a fila
+ * @return Ponteiro para o processo de maior prioridade ou NULL se fila vazia
+ */
+PCB* dequeue_highest_priority_process(ReadyQueue* queue);
+
 #endif // QUEUE_H

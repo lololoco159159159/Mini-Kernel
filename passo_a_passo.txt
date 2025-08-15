@@ -5,14 +5,14 @@ O que deve ser implementado:
     Target clean para apagar o executável.
     Testar a compilação básica.
 
-Passo 2 – Definir estruturas PCB, TCB e enums
+Passo 2 – Definir estruturas PCB, TCB e enums   ---feito
 O que deve ser implementado:
     Enum com estados do processo (READY, RUNNING, FINISHED).
     Estrutura do PCB (campos definidos na especificação, mutex e variável de condição).
     Estrutura do TCB (ponteiro para PCB + índice da thread no processo).
     Garantir que essas estruturas reflitam todos os campos exigidos pela spec, pois serão base de todo o código.
 
-Passo 3 – Fila de prontos (ready queue)
+Passo 3 – Fila de prontos (ready queue)   ---feito
 O que deve ser implementado:
     Estrutura de fila com mutex para proteger acesso concorrente.
     Funções para:

@@ -9,20 +9,20 @@ Este projeto implementa um sistema de escalonamento de processos multithread em 
 
 ## 📋 Status de Desenvolvimento
 
-### ✅ Concluído (Passos 1-5)
+### ✅ Concluído (Passos 1-6)
 
 - **✅ Passo 1**: Estrutura de projeto e Makefile
 - **✅ Passo 2**: Estruturas PCB, TCB e enums  
 - **✅ Passo 3**: Fila de prontos (ready queue)
 - **✅ Passo 4**: Sistema de log thread-safe
 - **✅ Passo 5**: Leitura de entrada e inicialização de PCBs
+- **✅ Passo 6**: Thread geradora de processos com controle temporal
 
-### 🚧 Em Desenvolvimento (Passos 6-9)
+### 🚧 Em Desenvolvimento (Passos 7-9)
 
-- **🔧 Passo 6**: Thread geradora de processos (versão simplificada implementada)
-- **🔧 Passo 7**: Threads de execução de processo  
-- **🔧 Passo 8**: Escalonador (FCFS básico funcionando)
-- **⏳ Passo 9**: Finalização e cleanup
+- **🔧 Passo 7**: Threads de execução de processo (parcialmente implementado)
+- **🔧 Passo 8**: Escalonador completo (FCFS básico funcionando)
+- **⏳ Passo 9**: Finalização e cleanup adequado
 
 ## 🏗️ Arquitetura do Sistema
 

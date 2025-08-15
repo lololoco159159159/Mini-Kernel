@@ -40,9 +40,6 @@ O que deve ser implementado:
         Inicializar remaining_time, estado inicial como READY, mutex, condicional, alocar vetor de threads.
     Ler política de escalonamento e armazenar numa variável global.
 
-
-================== feito ate aqui ^ ==================
-
 Passo 6 – Thread geradora de processos
 O que deve ser implementado:
     Criar função de thread responsável por:
@@ -51,6 +48,8 @@ O que deve ser implementado:
             Criar threads correspondentes ao processo (com função thread_func).
             Inserir processo na fila de prontos.
         Sinalizar quando todos os processos foram criados e enfileirados (generator_done = 1).
+
+================== feito ate aqui ^ ==================
 
 Passo 7 – Função da thread de execução de processo
 O que deve ser implementado:

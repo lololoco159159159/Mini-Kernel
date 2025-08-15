@@ -50,7 +50,7 @@ release: $(TARGET)
 # Limpeza dos arquivos gerados
 clean:
 	rm -rf $(OBJDIR) $(TARGET) log_execucao_minikernel.txt test_queue
-	rm demo_log
+	rm -f demo_log
 
 # Limpeza completa (inclui arquivos de backup)
 distclean: clean

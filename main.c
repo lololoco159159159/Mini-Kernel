@@ -20,6 +20,7 @@ SystemState system_state;
 int read_input_file(const char* filename);
 void* process_thread_function(void* arg);
 void* process_generator_thread(void* arg);
+int create_process_threads(PCB* pcb);
 void init_system();
 void cleanup_system();
 void wait_for_all_threads();
@@ -300,29 +301,121 @@ void* process_thread_function(void* arg) {
     return NULL;
 }
 
+int create_process_threads(PCB* pcb) {
+    if (pcb == NULL || pcb->num_threads <= 0) {
+        return 0;
+    }
+    
+    // Aloca vetor para IDs das threads
+    pcb->thread_ids = malloc(pcb->num_threads * sizeof(pthread_t));
+    if (pcb->thread_ids == NULL) {
+        add_log_message("ERRO: Falha ao alocar memoria para threads do processo PID %d\n", pcb->pid);
+        return 0;
+    }
+    
+    // Cria cada thread do processo
+    for (int i = 0; i < pcb->num_threads; i++) {
+        // Aloca e inicializa TCB para a thread
+        TCB* tcb = malloc(sizeof(TCB));
+        if (tcb == NULL) {
+            add_log_message("ERRO: Falha ao alocar TCB para thread %d do processo PID %d\n", i, pcb->pid);
+            // Limpa threads já criadas
+            for (int j = 0; j < i; j++) {
+                pthread_cancel(pcb->thread_ids[j]);
+            }
+            free(pcb->thread_ids);
+            pcb->thread_ids = NULL;
+            return 0;
+        }
+        
+        tcb->pcb = pcb;
+        tcb->thread_index = i;
+        
+        // Cria a thread
+        if (pthread_create(&pcb->thread_ids[i], NULL, process_thread_function, tcb) != 0) {
+            add_log_message("ERRO: Falha ao criar thread %d do processo PID %d\n", i, pcb->pid);
+            free(tcb);
+            // Limpa threads já criadas
+            for (int j = 0; j < i; j++) {
+                pthread_cancel(pcb->thread_ids[j]);
+            }
+            free(pcb->thread_ids);
+            pcb->thread_ids = NULL;
+            return 0;
+        }
+    }
+    
+    add_log_message("Processo PID %d criado com %d threads\n", pcb->pid, pcb->num_threads);
+    return 1;
+}
+
 void* process_generator_thread(void* arg) {
     (void)arg; // Suprime warning
     
     add_log_message("Thread geradora iniciada\n");
     
-    // Versão simplificada: apenas cria processos sem aguardar tempo de chegada
-    for (int i = 0; i < system_state.process_count; i++) {
-        PCB* pcb = &system_state.pcb_list[i];
-        
-        add_log_message("Criando processo PID %d\n", pcb->pid);
-        
-        // Simula criação de threads (sem realmente criar)
-        log_process_created(pcb->pid, pcb->num_threads);
-        
-        // Adiciona o processo à fila de prontos
-        enqueue_process(&system_state.ready_queue, pcb);
-        add_log_message("Processo PID %d adicionado a fila de prontos\n", pcb->pid);
-        
-        // Pequena pausa para simular
-        usleep(100000); // 100ms
+    // Array para controlar quais processos já foram criados
+    int* process_created = calloc(system_state.process_count, sizeof(int));
+    if (process_created == NULL) {
+        add_log_message("ERRO: Falha ao alocar memoria para controle de processos\n");
+        system_state.generator_done = 1;
+        return NULL;
     }
     
-    // Sinaliza que todos os processos foram criados
+    int processes_remaining = system_state.process_count;
+    int iterations = 0;
+    
+    // Loop principal: monitora tempo e cria processos conforme chegada
+    while (processes_remaining > 0) {
+        long current_time = get_current_time_ms();
+        iterations++;
+        
+        // Timeout de segurança
+        if (iterations > 10000) {
+            add_log_message("AVISO: Thread geradora atingiu limite de iteracoes - terminando forcadamente\n");
+            add_log_message("Processos restantes: %d, Tempo atual: %ldms\n", processes_remaining, current_time);
+            break;
+        }
+        
+        // Log periódico para debug
+        if (iterations % 1000 == 0) {
+            add_log_message("Thread geradora - Iteracao %d, Tempo: %ldms, Processos restantes: %d\n", 
+                           iterations, current_time, processes_remaining);
+        }
+        
+        // Verifica se algum processo deve ser criado neste momento
+        for (int i = 0; i < system_state.process_count; i++) {
+            if (!process_created[i]) {
+                PCB* pcb = &system_state.pcb_list[i];
+                
+                // Chegou o tempo de criar este processo?
+                if (current_time >= pcb->start_time) {
+                    add_log_message("Criando processo PID %d (tempo: %ldms, chegada: %dms)\n", 
+                                   pcb->pid, current_time, pcb->start_time);
+                    
+                    // Cria as threads do processo
+                    if (create_process_threads(pcb)) {
+                        log_process_created(pcb->pid, pcb->num_threads);
+                        
+                        // Adiciona o processo à fila de prontos
+                        enqueue_process(&system_state.ready_queue, pcb);
+                        add_log_message("Processo PID %d adicionado a fila de prontos\n", pcb->pid);
+                        
+                        process_created[i] = 1;
+                        processes_remaining--;
+                    } else {
+                        add_log_message("ERRO: Falha ao criar threads do processo PID %d\n", pcb->pid);
+                    }
+                }
+            }
+        }
+        
+        // Pequena pausa para não consumir CPU desnecessariamente
+        usleep(10000); // 10ms
+    }
+    
+    // Libera memória e sinaliza conclusão
+    free(process_created);
     system_state.generator_done = 1;
     add_log_message("Thread geradora finalizou - todos os processos criados\n");
     

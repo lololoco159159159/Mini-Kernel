@@ -47,7 +47,12 @@ int main(int argc, char* argv[]) {
     log_system_start();
     
     // Inicializa o escalonador
-    init_scheduler(system_state.scheduler_type, THREAD_EXECUTION_TIME);
+    int quantum = THREAD_EXECUTION_TIME;
+    if (system_state.scheduler_type == ROUND_ROBIN) {
+        quantum = 1000; // Quantum maior para Round Robin (1000ms = 1s)
+        add_log_message("CONFIGURANDO QUANTUM RR: %dms\n", quantum);
+    }
+    init_scheduler(system_state.scheduler_type, quantum);
     
     // Cria a thread geradora de processos
     pthread_t generator_thread;
@@ -78,8 +83,8 @@ int main(int argc, char* argv[]) {
     // Aguarda as threads principais terminarem (com timeout)
     add_log_message("Aguardando threads terminarem...\n");
     
-    // Usa um timeout global mais simples
-    alarm(10); // Timeout de 10 segundos para todo o programa
+    // Aguarda as threads principais terminarem
+    add_log_message("Aguardando threads terminarem...\n");
     
     pthread_join(generator_thread, NULL);
     add_log_message("Thread geradora terminou\n");
@@ -92,15 +97,21 @@ int main(int argc, char* argv[]) {
     add_log_message("Segunda thread escalonador terminou\n");
 #endif
     
-    alarm(0); // Cancela o timeout
-    
-    // Não aguarda threads dos processos pois estamos usando versão simplificada
     add_log_message("Todas as threads principais terminaram\n");
     
-    // Salva o log completo em arquivo (OBRIGATÓRIO - nenhum printf no terminal)
+    // Passo 9: Garantir término de todas as threads dos processos (pthread_join)
+    wait_for_all_threads();
+    
+    // Estatísticas finais
+    add_log_message("\n=== ESTATISTICAS FINAIS ===\n");
+    add_log_message("Total de processos: %d\n", system_state.process_count);
+    add_log_message("Politica de escalonamento: %s\n", get_scheduler_name(system_state.scheduler_type));
+    add_log_message("=== FIM DA SIMULACAO ===\n");
+    
+    // Passo 9: Salvar log no arquivo
     save_log_to_file("log_execucao_minikernel.txt");
     
-    // Limpa recursos do sistema
+    // Passo 9: Liberar memória alocada e destruir mutexes/variáveis de condição
     cleanup_system();
     
     return 0;
@@ -252,48 +263,61 @@ void* process_thread_function(void* arg) {
     
     add_log_message("Thread %d do processo PID %d iniciada\n", thread_index, pcb->pid);
     
-    int iterations = 0;
     while (1) {
         pthread_mutex_lock(&pcb->mutex);
         
-        // Aguarda até o processo estar em execução ou finalizado
+        // Aguarda sinal do escalonador enquanto estado != RUNNING e != FINISHED
         while (pcb->state != RUNNING && pcb->state != FINISHED) {
             pthread_cond_wait(&pcb->cv, &pcb->mutex);
         }
         
-        // Verifica se o processo terminou
+        // Verifica se o processo foi finalizado
         if (pcb->state == FINISHED) {
             pthread_mutex_unlock(&pcb->mutex);
+            add_log_message("Thread %d do processo PID %d terminou (estado FINISHED)\n", 
+                           thread_index, pcb->pid);
             break;
         }
         
-        // Simula execução por um pequeno período
-        pthread_mutex_unlock(&pcb->mutex);
-        usleep(THREAD_EXECUTION_TIME * 1000); // 500ms
+        // Verifica se ainda há tempo restante para execução
+        if (pcb->remaining_time <= 0) {
+            // Processo já terminou, sinaliza outras threads
+            pcb->state = FINISHED;
+            pthread_cond_broadcast(&pcb->cv);
+            pthread_mutex_unlock(&pcb->mutex);
+            add_log_message("Thread %d do processo PID %d detectou fim de execução\n", 
+                           thread_index, pcb->pid);
+            break;
+        }
         
-        // Atualiza tempo restante de forma segura
+        pthread_mutex_unlock(&pcb->mutex);
+        
+        // Simula execução por 500ms (conforme especificação)
+        usleep(500000); // 500ms = 500.000 microssegundos
+        
+        // Decrementa remaining_time de forma segura
         pthread_mutex_lock(&pcb->mutex);
         
         if (pcb->remaining_time > 0) {
-            pcb->remaining_time -= THREAD_EXECUTION_TIME;
+            pcb->remaining_time -= 500; // Decrementa 500ms
             
+            add_log_message("Thread %d do processo PID %d executou 500ms (restante: %dms)\n",
+                           thread_index, pcb->pid, pcb->remaining_time);
+            
+            // Se remaining_time <= 0, muda estado para FINISHED e sinaliza todas as threads
             if (pcb->remaining_time <= 0) {
                 pcb->remaining_time = 0;
                 pcb->state = FINISHED;
                 pthread_cond_broadcast(&pcb->cv); // Acorda todas as threads do processo
-                add_log_message("Thread %d do processo PID %d finalizou execucao\n", thread_index, pcb->pid);
+                
+                add_log_message("Thread %d do processo PID %d finalizou execução completa\n", 
+                               thread_index, pcb->pid);
+                pthread_mutex_unlock(&pcb->mutex);
+                break;
             }
         }
         
         pthread_mutex_unlock(&pcb->mutex);
-        
-        iterations++;
-        // Timeout de segurança
-        if (iterations > 100) {
-            add_log_message("AVISO: Thread %d do processo PID %d forcando termino apos %d iteracoes\n", 
-                           thread_index, pcb->pid, iterations);
-            break;
-        }
     }
     
     add_log_message("Thread %d do processo PID %d terminada\n", thread_index, pcb->pid);
@@ -434,43 +458,76 @@ void init_system() {
 }
 
 void cleanup_system() {
-    // Aguarda e limpa threads dos processos
+    add_log_message("=== INICIANDO LIMPEZA DO SISTEMA ===\n");
+    
+    // Liberar memória alocada (vetores de threads, lista de PCBs, filas)
     if (system_state.pcb_list != NULL) {
+        add_log_message("Liberando recursos de %d processos...\n", system_state.process_count);
+        
         for (int i = 0; i < system_state.process_count; i++) {
             PCB* pcb = &system_state.pcb_list[i];
             
-            // Libera recursos do PCB
+            // Libera vetor de IDs das threads
             if (pcb->thread_ids != NULL) {
                 free(pcb->thread_ids);
+                pcb->thread_ids = NULL;
+                add_log_message("Vetor de threads do processo PID %d liberado\n", pcb->pid);
             }
             
-            pthread_mutex_destroy(&pcb->mutex);
-            pthread_cond_destroy(&pcb->cv);
+            // Destruir mutexes e variáveis de condição
+            if (pthread_mutex_destroy(&pcb->mutex) == 0) {
+                add_log_message("Mutex do processo PID %d destruído\n", pcb->pid);
+            } else {
+                add_log_message("AVISO: Falha ao destruir mutex do processo PID %d\n", pcb->pid);
+            }
+            
+            if (pthread_cond_destroy(&pcb->cv) == 0) {
+                add_log_message("Variável de condição do processo PID %d destruída\n", pcb->pid);
+            } else {
+                add_log_message("AVISO: Falha ao destruir variável de condição do processo PID %d\n", pcb->pid);
+            }
         }
         
+        // Libera lista de PCBs
         free(system_state.pcb_list);
+        system_state.pcb_list = NULL;
+        add_log_message("Lista de PCBs liberada\n");
     }
     
     // Limpa fila de prontos
     destroy_ready_queue(&system_state.ready_queue);
-    
-    // Limpa sistema de log
-    cleanup_log_system();
+    add_log_message("Fila de prontos destruída\n");
     
     // Limpa escalonador
     cleanup_scheduler();
+    add_log_message("Recursos do escalonador liberados\n");
+    
+    add_log_message("=== LIMPEZA DO SISTEMA CONCLUÍDA ===\n");
 }
 
 void wait_for_all_threads() {
     if (system_state.pcb_list == NULL) return;
     
+    add_log_message("=== AGUARDANDO TÉRMINO DE TODAS AS THREADS DOS PROCESSOS ===\n");
+    
     for (int i = 0; i < system_state.process_count; i++) {
         PCB* pcb = &system_state.pcb_list[i];
         
+        add_log_message("Aguardando %d threads do processo PID %d...\n", pcb->num_threads, pcb->pid);
+        
+        // Garantir término de todas as threads do processo (pthread_join)
         for (int j = 0; j < pcb->num_threads; j++) {
-            pthread_join(pcb->thread_ids[j], NULL);
+            if (pthread_join(pcb->thread_ids[j], NULL) == 0) {
+                add_log_message("Thread %d do processo PID %d finalizada com sucesso\n", j, pcb->pid);
+            } else {
+                add_log_message("AVISO: Falha ao aguardar thread %d do processo PID %d\n", j, pcb->pid);
+            }
         }
+        
+        add_log_message("Todas as threads do processo PID %d finalizaram\n", pcb->pid);
     }
+    
+    add_log_message("Todos os processos finalizaram execucao\n");
 }
 
 void cleanup_pcb_list(int count) {

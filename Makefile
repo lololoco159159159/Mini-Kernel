@@ -58,7 +58,7 @@ distclean: clean
 
 # Target para executar testes com valgrind
 valgrind: debug
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./$(TARGET)
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./$(TARGET) entradas/1.txt
 
 # Target para verificar memória com diferentes ferramentas
 memcheck: debug

@@ -107,14 +107,7 @@ void add_log_with_timestamp(const char* message) {
 }
 
 int save_log_to_file(const char* filename) {
-    // Adiciona informações finais ao log ANTES do lock final
-    add_log_message("\n=== ESTATISTICAS FINAIS ===\n");
-    add_log_message("Total de processos: %d\n", system_state.process_count);
-    add_log_message("Politica de escalonamento: %s\n", get_scheduler_name(system_state.scheduler_type));
-    add_log_message("Tamanho do log: %d bytes\n", system_state.log_size);
-    add_log_message("=== FIM DA SIMULACAO ===\n");
-    
-    // Agora faz o lock final apenas para escrever no arquivo
+    // Faz o lock para escrever no arquivo
     pthread_mutex_lock(&log_mutex);
     
     FILE* file = fopen(filename, "w");

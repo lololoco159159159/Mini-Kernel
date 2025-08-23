@@ -196,29 +196,21 @@ int read_input_file(const char* filename) {
         // Inicializa mecanismos de sincronização
         if (pthread_mutex_init(&pcb->mutex, NULL) != 0) {
             add_log_message("ERRO: Falha ao inicializar mutex do processo %d\n", pcb->pid);
-            cleanup_pcb_list(i);
+            cleanup_pcb_list(i); // Limpa PCBs de 0 até i-1
             fclose(file);
             return 0;
         }
         
         if (pthread_cond_init(&pcb->cv, NULL) != 0) {
             add_log_message("ERRO: Falha ao inicializar variavel de condicao do processo %d\n", pcb->pid);
-            pthread_mutex_destroy(&pcb->mutex);
-            cleanup_pcb_list(i);
+            pthread_mutex_destroy(&pcb->mutex); // Destroy o mutex que acabou de ser criado
+            cleanup_pcb_list(i); // Limpa PCBs de 0 até i-1
             fclose(file);
             return 0;
         }
         
-        // Aloca memória para os IDs das threads
-        pcb->thread_ids = malloc(pcb->num_threads * sizeof(pthread_t));
-        if (pcb->thread_ids == NULL) {
-            add_log_message("ERRO: Falha ao alocar memoria para threads do processo %d\n", pcb->pid);
-            pthread_mutex_destroy(&pcb->mutex);
-            pthread_cond_destroy(&pcb->cv);
-            cleanup_pcb_list(i);
-            fclose(file);
-            return 0;
-        }
+        // Inicializar thread_ids como NULL - será alocado em create_process_threads
+        pcb->thread_ids = NULL;
         
         // Log da criação bem-sucedida do PCB
         add_log_message("PCB criado - PID: %d, Duracao: %dms, Prioridade: %d, Threads: %d, Chegada: %dms\n",
@@ -429,6 +421,8 @@ void* process_generator_thread(void* arg) {
                         processes_remaining--;
                     } else {
                         add_log_message("ERRO: Falha ao criar threads do processo PID %d\n", pcb->pid);
+                        // IMPORTANTE: Se falhou, o thread_ids já foi liberado em create_process_threads
+                        // Não precisa fazer nada aqui
                     }
                 }
             }
@@ -458,11 +452,8 @@ void init_system() {
 }
 
 void cleanup_system() {
-    add_log_message("=== INICIANDO LIMPEZA DO SISTEMA ===\n");
-    
     // Liberar memória alocada (vetores de threads, lista de PCBs, filas)
     if (system_state.pcb_list != NULL) {
-        add_log_message("Liberando recursos de %d processos...\n", system_state.process_count);
         
         for (int i = 0; i < system_state.process_count; i++) {
             PCB* pcb = &system_state.pcb_list[i];
@@ -471,38 +462,26 @@ void cleanup_system() {
             if (pcb->thread_ids != NULL) {
                 free(pcb->thread_ids);
                 pcb->thread_ids = NULL;
-                add_log_message("Vetor de threads do processo PID %d liberado\n", pcb->pid);
             }
             
             // Destruir mutexes e variáveis de condição
-            if (pthread_mutex_destroy(&pcb->mutex) == 0) {
-                add_log_message("Mutex do processo PID %d destruído\n", pcb->pid);
-            } else {
-                add_log_message("AVISO: Falha ao destruir mutex do processo PID %d\n", pcb->pid);
-            }
-            
-            if (pthread_cond_destroy(&pcb->cv) == 0) {
-                add_log_message("Variável de condição do processo PID %d destruída\n", pcb->pid);
-            } else {
-                add_log_message("AVISO: Falha ao destruir variável de condição do processo PID %d\n", pcb->pid);
-            }
+            pthread_mutex_destroy(&pcb->mutex);
+            pthread_cond_destroy(&pcb->cv);
         }
         
         // Libera lista de PCBs
         free(system_state.pcb_list);
         system_state.pcb_list = NULL;
-        add_log_message("Lista de PCBs liberada\n");
     }
-    
-    // Limpa fila de prontos
-    destroy_ready_queue(&system_state.ready_queue);
-    add_log_message("Fila de prontos destruída\n");
     
     // Limpa escalonador
     cleanup_scheduler();
-    add_log_message("Recursos do escalonador liberados\n");
     
-    add_log_message("=== LIMPEZA DO SISTEMA CONCLUÍDA ===\n");
+    // Limpa fila de prontos
+    destroy_ready_queue(&system_state.ready_queue);
+    
+    // Limpa sistema de log (deve ser por último)
+    cleanup_log_system();
 }
 
 void wait_for_all_threads() {

@@ -29,6 +29,7 @@ typedef struct {
     // Campos dinâmicos (modificados durante execução)
     int remaining_time;         // Tempo restante de execução (decrementado pelas threads)
     ProcessState state;         // Estado atual: READY, RUNNING ou FINISHED
+    volatile int should_preempt; // Flag para indicar preempção
     
     // Mecanismos de sincronização
     pthread_mutex_t mutex;      // Mutex exclusivo para controlar acesso concorrente

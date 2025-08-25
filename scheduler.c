@@ -28,7 +28,11 @@ void init_scheduler(SchedulerType scheduler_type, int quantum) {
 }
 
 void* scheduler_thread(void* arg) {
-    (void)arg; // Suprime warning de parâmetro não utilizado
+#ifdef MULTI
+    int cpu_id = (arg != NULL) ? *((int*)arg) : 0; // CPU 0 por padrão
+#else
+    (void)arg; // Suprime warning de parâmetro não utilizado  
+#endif
     
     while (1) {
         // Verifica se deve terminar
@@ -38,13 +42,25 @@ void* scheduler_thread(void* arg) {
         
         switch (system_state.scheduler_type) {
             case FCFS:
+#ifdef MULTI
+                schedule_fcfs_cpu(cpu_id);
+#else
                 schedule_fcfs();
+#endif
                 break;
             case ROUND_ROBIN:
+#ifdef MULTI
+                schedule_round_robin_cpu(cpu_id);
+#else
                 schedule_round_robin();
+#endif
                 break;
             case PRIORITY:
+#ifdef MULTI
+                schedule_priority_cpu(cpu_id);  
+#else
                 schedule_priority();
+#endif
                 break;
             default:
                 fprintf(stderr, "Erro: tipo de escalonador desconhecido\n");
@@ -57,7 +73,9 @@ void* scheduler_thread(void* arg) {
     
     log_scheduler_end();
     return NULL;
-}void schedule_fcfs() {
+}
+
+void schedule_fcfs() {
     const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
     int iteration_count = 0;
     
@@ -70,22 +88,14 @@ void* scheduler_thread(void* arg) {
         
         // Timeout de segurança
         if (iteration_count > 100) {
-            add_log_message("AVISO: Escalonador atingiu limite de iteracoes - terminando\n");
             break;
-        }
-        
-        // Log periódico para acompanhamento
-        if (iteration_count % 10 == 0) {
-            add_log_message("Escalonador: iteracao %d, generator_done=%d, queue_size=%d\n",
-                           iteration_count, system_state.generator_done, 
-                           get_queue_size(&system_state.ready_queue));
         }
         
         // FCFS: pegar primeiro da fila e executar até terminar
         if (!is_queue_empty(&system_state.ready_queue)) {
             PCB* process = dequeue_process(&system_state.ready_queue);
             if (process != NULL) {
-                add_log_message("Executando processo PID %d por %dms\n", process->pid, process->process_len);
+                // add_log_message("Executando processo PID %d por %dms\n", process->pid, process->process_len);
                 
                 // Registrar eventos no log
                 log_process_start(scheduler_name, process->pid);
@@ -104,7 +114,7 @@ void* scheduler_thread(void* arg) {
                 
                 // Registrar finalização no log
                 log_process_finish(scheduler_name, process->pid);
-                add_log_message("Processo PID %d finalizado\n", process->pid);
+                // add_log_message("Processo PID %d finalizado\n", process->pid);
             }
         }
         
@@ -112,7 +122,7 @@ void* scheduler_thread(void* arg) {
         usleep(10000); // 10ms
     }
     
-    add_log_message("Escalonador FCFS finalizado apos %d iteracoes\n", iteration_count);
+    add_log_message("Escalonador FCFS finalizado\n");
 }
 
 void schedule_round_robin() {
@@ -121,45 +131,52 @@ void schedule_round_robin() {
     
     add_log_message("Escalonador Round Robin iniciado (quantum: %dms)\n", system_state.quantum);
     
+    // Round Robin que implementa quantum corretamente
     while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
         iteration_count++;
         
         if (iteration_count > 100) {
-            add_log_message("AVISO: Escalonador RR atingiu limite de iteracoes\n");
             break;
         }
         
         if (!is_queue_empty(&system_state.ready_queue)) {
             PCB* process = dequeue_process(&system_state.ready_queue);
             if (process != NULL) {
-                add_log_message("RR: Executando processo PID %d\n", process->pid);
+                // add_log_message("RR: Executando processo PID %d\n", process->pid);
                 
-                // Usar função específica para RR
+                // Log específico para RR
                 log_process_start_rr(process->pid, system_state.quantum);
                 
-                // Colocar em execução
-                set_process_running(process);
-                
-                // Aguardar por quantum ou até terminar
-                int quantum_time = 0;
+                // Verificar quanto tempo o processo ainda precisa
                 pthread_mutex_lock(&process->mutex);
-                while (process->state != FINISHED && quantum_time < system_state.quantum) {
-                    pthread_mutex_unlock(&process->mutex);
-                    usleep(10000); // 10ms
-                    quantum_time += 10;
-                    pthread_mutex_lock(&process->mutex);
-                }
+                int remaining_time = process->remaining_time;
                 
-                if (process->state == FINISHED) {
+                if (remaining_time <= system_state.quantum) {
+                    // Processo termina neste quantum
+                    process->state = RUNNING;
+                    pthread_cond_broadcast(&process->cv);
                     pthread_mutex_unlock(&process->mutex);
+                    
+                    // Aguardar o processo terminar
+                    pthread_mutex_lock(&process->mutex);
+                    while (process->state != FINISHED) {
+                        pthread_mutex_unlock(&process->mutex);
+                        usleep(10000); // 10ms
+                        pthread_mutex_lock(&process->mutex);
+                    }
+                    pthread_mutex_unlock(&process->mutex);
+                    
                     log_process_finish(scheduler_name, process->pid);
-                    add_log_message("RR: Processo PID %d terminou\n", process->pid);
+                    // add_log_message("RR: Processo PID %d terminou\n", process->pid);
                 } else {
-                    // Quantum expirado, recolocar na fila
+                    // Processo usa o quantum mas não termina
+                    process->remaining_time -= system_state.quantum;
                     pthread_mutex_unlock(&process->mutex);
-                    stop_process_execution(process);
+                    
+                    // Recolocar na fila para próxima execução
                     enqueue_process(&system_state.ready_queue, process);
-                    add_log_message("RR: Quantum expirado para processo PID %d - recolocado na fila\n", process->pid);
+                    // add_log_message("RR: Processo PID %d usou quantum, restam %dms - recolocado na fila\n", 
+                    //                process->pid, process->remaining_time);
                 }
             }
         }
@@ -167,69 +184,92 @@ void schedule_round_robin() {
         usleep(10000); // 10ms
     }
     
-    add_log_message("Escalonador Round Robin finalizado apos %d iteracoes\n", iteration_count);
+    add_log_message("Escalonador Round Robin finalizado\n");
 }
 
 void schedule_priority() {
-    const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
-    int iteration_count = 0;
-    
     add_log_message("Escalonador por Prioridade iniciado\n");
     
-    // Loop principal simplificado: enquanto houver processos prontos ou ainda não criados
-    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
-        
-        iteration_count++;
-        
-        // Timeout de segurança
-        if (iteration_count > 100) {
-            add_log_message("AVISO: Escalonador Prioridade atingiu limite de iteracoes - terminando\n");
-            break;
+    // Executa até que não há mais processos para gerar ou executar
+    do {
+        // Processa apenas se há processos aguardando execução
+        if (is_queue_empty(&system_state.ready_queue)) {
+            usleep(10000);
+            continue;
         }
         
-        // Log periódico
-        if (iteration_count % 10 == 0) {
-            add_log_message("Escalonador Prioridade: iteracao %d, generator_done=%d, queue_size=%d\n",
-                           iteration_count, system_state.generator_done, 
-                           get_queue_size(&system_state.ready_queue));
+        // Obtém processo com prioridade mais alta da fila
+        PCB* selected_process = get_highest_priority_process(&system_state.ready_queue);
+        if (selected_process == NULL) {
+            usleep(10000);
+            continue;
         }
         
-        // Prioridade: pegar processo de maior prioridade (menor valor numérico)
-        if (!is_queue_empty(&system_state.ready_queue)) {
-            PCB* process = get_highest_priority_process(&system_state.ready_queue);
-            if (process != NULL) {
-                // Remove da fila
-                remove_process_from_queue(&system_state.ready_queue, process);
-                
-                add_log_message("Executando processo PID %d (prioridade %d) por %dms\n", 
-                               process->pid, process->priority, process->process_len);
-                
-                // Registrar eventos no log
-                log_process_start(scheduler_name, process->pid);
-                
-                // Mudar estado para RUNNING e acordar threads do processo
-                set_process_running(process);
-                
-                // Aguardar término completo (versão não-preemptiva)
-                pthread_mutex_lock(&process->mutex);
-                while (process->state != FINISHED) {
-                    pthread_mutex_unlock(&process->mutex);
-                    usleep(10000); // 10ms de pausa
-                    pthread_mutex_lock(&process->mutex);
-                }
-                pthread_mutex_unlock(&process->mutex);
-                
-                // Registrar finalização no log
-                log_process_finish(scheduler_name, process->pid);
-                add_log_message("Processo PID %d terminou execução\n", process->pid);
+        // Retira processo da fila de prontos
+        remove_process_from_queue(&system_state.ready_queue, selected_process);
+        
+        // Inicia execução do processo selecionado
+        log_process_start_priority(selected_process->pid, selected_process->priority);
+        set_process_running(selected_process);
+        
+        // Controla execução com possibilidade de preempção
+        int keep_running = 1;
+        do {
+            // Verifica estado atual do processo
+            pthread_mutex_lock(&selected_process->mutex);
+            int time_left = selected_process->remaining_time;
+            ProcessState current_state = selected_process->state;
+            
+            // Finaliza se processo completou execução
+            if (time_left <= 0 || current_state == FINISHED) {
+                selected_process->state = FINISHED;
+                pthread_mutex_unlock(&selected_process->mutex);
+                log_process_finish_priority(selected_process->pid);
+                keep_running = 0;
+                break;
             }
-        }
+            
+            // Define quantum de execução (máximo 50ms)
+            int time_quantum;
+            if (time_left > 50) {
+                time_quantum = 50;
+            } else {
+                time_quantum = time_left;
+            }
+            selected_process->remaining_time -= time_quantum;
+            pthread_mutex_unlock(&selected_process->mutex);
+            
+            // Executa por um quantum
+            usleep(50000); // 50ms
+            
+            // Avalia necessidade de preempção
+            PCB* next_priority_process = get_highest_priority_process(&system_state.ready_queue);
+            if (next_priority_process != NULL) {
+                // Compara prioridades (menor valor = maior prioridade)
+                if (next_priority_process->priority < selected_process->priority) {
+                    // Preempção necessária
+                    pthread_mutex_lock(&selected_process->mutex);
+                    if (selected_process->state != FINISHED && selected_process->remaining_time > 0) {
+                        selected_process->state = READY;
+                        pthread_mutex_unlock(&selected_process->mutex);
+                        
+                        // Reinsere processo na fila
+                        enqueue_process(&system_state.ready_queue, selected_process);
+                        add_log_message("Processo PID %d preemptado por processo de maior prioridade\n", selected_process->pid);
+                        keep_running = 0;
+                    } else {
+                        pthread_mutex_unlock(&selected_process->mutex);
+                    }
+                }
+            }
+        } while (keep_running);
         
-        // Pequena pausa
-        usleep(10000); // 10ms
-    }
+        // Breve pausa antes da próxima iteração
+        usleep(10000);
+        
+    } while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue));
     
-    add_log_message("Escalonador por Prioridade finalizado apos %d iteracoes\n", iteration_count);
+    add_log_message("Escalonador por Prioridade finalizado\n");
 }
 
 void set_process_running(PCB* pcb) {
@@ -291,20 +331,365 @@ void cleanup_scheduler() {
 }
 
 #ifdef MULTI
-void* scheduler_thread_cpu2(void* arg) {
-    (void)arg;
-    int iteration_count = 0;
+// Thread do escalonador para CPU específico (multiprocessador)
+void* scheduler_thread_cpu(void* arg) {
+    int cpu_id = *(int*)arg;
     
-    add_log_message("Escalonador CPU2 iniciado\n");
+    add_log_message("Escalonador iniciado (CPU %d)\n", cpu_id);
     
-    // Versão simplificada: aguarda um pouco e termina
-    while (!system_state.generator_done && iteration_count < 10) {
-        iteration_count++;
-        add_log_message("[CPU2] Iteracao %d, aguardando...\n", iteration_count);
-        sleep_ms(100);
+    while (true) {
+        // Executa algoritmo baseado no tipo
+        switch (system_state.scheduler_type) {
+            case FCFS:
+                schedule_fcfs_cpu(cpu_id);
+                break;
+            case ROUND_ROBIN:
+                schedule_round_robin_cpu(cpu_id);
+                break;
+            case PRIORITY:
+                schedule_priority_cpu(cpu_id);
+                break;
+            default:
+                fprintf(stderr, "Erro: tipo de escalonador desconhecido\n");
+                break;
+        }
+        
+        // Verifica condição de parada
+        if (system_state.generator_done && is_queue_empty(&system_state.ready_queue)) {
+            break;
+        }
+        
+        // Pequena pausa
+        usleep(10000); // 10ms
     }
     
-    add_log_message("Escalonador CPU2 finalizado apos %d iteracoes\n", iteration_count);
+    // Apenas o primeiro CPU que terminar chama log_scheduler_end
+    static int scheduler_ended = 0;
+    if (__sync_bool_compare_and_swap(&scheduler_ended, 0, 1)) {
+        log_scheduler_end();
+    }
+    
+    add_log_message("Escalonador terminado (CPU %d)\n", cpu_id);
+    return NULL;
+}
+
+// Função auxiliar para obter processo para CPU específico (multiprocessador)
+PCB* get_process_for_cpu(int cpu_id) {
+    pthread_mutex_lock(&system_state.ready_queue.mutex);
+    
+    if (system_state.ready_queue.front == NULL) {
+        pthread_mutex_unlock(&system_state.ready_queue.mutex);
+        return NULL;
+    }
+    
+    QueueNode* current = system_state.ready_queue.front;
+    QueueNode* prev = NULL;
+    
+    while (current != NULL) {
+        PCB* candidate = current->pcb;
+        pthread_mutex_lock(&candidate->mutex);
+        
+        // Para processos com múltiplas threads, permite execução em ambos os CPUs
+        if (candidate->state == READY) {
+            if (candidate->num_threads > 1) {
+                // Para processos multithread, não remove da fila ainda
+                pthread_mutex_unlock(&candidate->mutex);
+                pthread_mutex_unlock(&system_state.ready_queue.mutex);
+                return candidate;
+            } else {
+                // Para processos com uma thread, remove da fila
+                if (prev == NULL) {
+                    system_state.ready_queue.front = current->next;
+                } else {
+                    prev->next = current->next;
+                }
+                if (current == system_state.ready_queue.rear) {
+                    system_state.ready_queue.rear = prev;
+                }
+                system_state.ready_queue.size--;
+                free(current);
+                
+                pthread_mutex_unlock(&candidate->mutex);
+                pthread_mutex_unlock(&system_state.ready_queue.mutex);
+                return candidate;
+            }
+        } else if (candidate->state == RUNNING && candidate->num_threads > 1) {
+            // Permite que outros CPUs também executem este processo multithread
+            pthread_mutex_unlock(&candidate->mutex);
+            pthread_mutex_unlock(&system_state.ready_queue.mutex);
+            return candidate;
+        }
+        
+        pthread_mutex_unlock(&candidate->mutex);
+        prev = current;
+        current = current->next;
+    }
+    
+    pthread_mutex_unlock(&system_state.ready_queue.mutex);
+    return NULL;
+}
+
+// Versões multiprocessador dos escalonadores
+void schedule_fcfs_cpu(int cpu_id) {
+    const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
+    int iteration_count = 0;
+    
+    add_log_message("Escalonador FCFS CPU%d iniciado\n", cpu_id);
+    
+    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
+        iteration_count++;
+        
+        if (iteration_count > 100) {
+            break;
+        }
+        
+        PCB* process = get_process_for_cpu(cpu_id);
+        if (process != NULL) {
+            // Log com identificação do processador
+            log_process_start_cpu(scheduler_name, process->pid, cpu_id);
+            
+            set_process_running(process);
+            
+            pthread_mutex_lock(&process->mutex);
+            while (process->state != FINISHED) {
+                pthread_mutex_unlock(&process->mutex);
+                usleep(10000);
+                pthread_mutex_lock(&process->mutex);
+            }
+            
+            // Para processos multithread, apenas o primeiro CPU a detectar o fim imprime
+            int should_log_finish = 0;
+            if (process->num_threads > 1) {
+                // Usa uma variável estática para controlar quem imprime
+                static volatile int finished_processes[MAX_PROCESSES] = {0};
+                if (__sync_bool_compare_and_swap(&finished_processes[process->pid - 1], 0, 1)) {
+                    should_log_finish = 1;
+                }
+                
+                pthread_mutex_unlock(&process->mutex);
+                
+                // Remove da fila apenas uma vez
+                if (should_log_finish) {
+                    pthread_mutex_lock(&system_state.ready_queue.mutex);
+                    QueueNode* current = system_state.ready_queue.front;
+                    QueueNode* prev = NULL;
+                    
+                    while (current != NULL) {
+                        if (current->pcb == process) {
+                            if (prev == NULL) {
+                                system_state.ready_queue.front = current->next;
+                            } else {
+                                prev->next = current->next;
+                            }
+                            if (current == system_state.ready_queue.rear) {
+                                system_state.ready_queue.rear = prev;
+                            }
+                            system_state.ready_queue.size--;
+                            free(current);
+                            break;
+                        }
+                        prev = current;
+                        current = current->next;
+                    }
+                    pthread_mutex_unlock(&system_state.ready_queue.mutex);
+                }
+            } else {
+                should_log_finish = 1;
+                pthread_mutex_unlock(&process->mutex);
+            }
+            
+            if (should_log_finish) {
+                log_process_finish(scheduler_name, process->pid);
+            }
+        }
+        
+        usleep(10000);
+    }
+    
+    add_log_message("Escalonador FCFS CPU%d finalizado\n", cpu_id);
+}
+
+void schedule_round_robin_cpu(int cpu_id) {
+    const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
+    int iteration_count = 0;
+    
+    add_log_message("Escalonador Round Robin CPU%d iniciado\n", cpu_id);
+    
+    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
+        iteration_count++;
+        
+        if (iteration_count > 100) {
+            break;
+        }
+        
+        PCB* process = get_process_for_cpu(cpu_id);
+        if (process != NULL) {
+            // Log com identificação do processador
+            log_process_start_rr_cpu(process->pid, system_state.quantum, cpu_id);
+            
+            set_process_running(process);
+            
+            pthread_mutex_lock(&process->mutex);
+            while (process->state != FINISHED) {
+                pthread_mutex_unlock(&process->mutex);
+                usleep(10000);
+                pthread_mutex_lock(&process->mutex);
+            }
+            
+            // Para processos multithread, apenas o primeiro CPU a detectar o fim imprime
+            int should_log_finish = 0;
+            if (process->num_threads > 1) {
+                // Usa uma variável estática para controlar quem imprime
+                static volatile int finished_processes_rr[MAX_PROCESSES] = {0};
+                if (__sync_bool_compare_and_swap(&finished_processes_rr[process->pid - 1], 0, 1)) {
+                    should_log_finish = 1;
+                }
+                
+                pthread_mutex_unlock(&process->mutex);
+                
+                // Remove da fila apenas uma vez
+                if (should_log_finish) {
+                    pthread_mutex_lock(&system_state.ready_queue.mutex);
+                    QueueNode* current = system_state.ready_queue.front;
+                    QueueNode* prev = NULL;
+                    
+                    while (current != NULL) {
+                        if (current->pcb == process) {
+                            if (prev == NULL) {
+                                system_state.ready_queue.front = current->next;
+                            } else {
+                                prev->next = current->next;
+                            }
+                            if (current == system_state.ready_queue.rear) {
+                                system_state.ready_queue.rear = prev;
+                            }
+                            system_state.ready_queue.size--;
+                            free(current);
+                            break;
+                        }
+                        prev = current;
+                        current = current->next;
+                    }
+                    pthread_mutex_unlock(&system_state.ready_queue.mutex);
+                }
+            } else {
+                should_log_finish = 1;
+                pthread_mutex_unlock(&process->mutex);
+            }
+            
+            if (should_log_finish) {
+                log_process_finish(scheduler_name, process->pid);
+            }
+        }
+        
+        usleep(10000);
+    }
+    
+    add_log_message("Escalonador Round Robin CPU%d finalizado\n", cpu_id);
+}
+
+void schedule_priority_cpu(int cpu_id) {
+    add_log_message("Escalonador por Prioridade CPU%d iniciado\n", cpu_id);
+    
+    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
+        PCB* process = get_process_for_cpu(cpu_id);
+        if (process != NULL) {
+            // Log com identificação do processador
+            log_process_start_priority_cpu(process->pid, process->priority, cpu_id);
+            
+            set_process_running(process);
+            
+            pthread_mutex_lock(&process->mutex);
+            while (process->state != FINISHED) {
+                pthread_mutex_unlock(&process->mutex);
+                usleep(10000);
+                pthread_mutex_lock(&process->mutex);
+            }
+            
+            // Para processos multithread, apenas o primeiro CPU a detectar o fim imprime
+            int should_log_finish = 0;
+            if (process->num_threads > 1) {
+                // Usa uma variável estática para controlar quem imprime
+                static volatile int finished_processes_prio[MAX_PROCESSES] = {0};
+                if (__sync_bool_compare_and_swap(&finished_processes_prio[process->pid - 1], 0, 1)) {
+                    should_log_finish = 1;
+                }
+                
+                pthread_mutex_unlock(&process->mutex);
+                
+                // Remove da fila apenas uma vez
+                if (should_log_finish) {
+                    pthread_mutex_lock(&system_state.ready_queue.mutex);
+                    QueueNode* current = system_state.ready_queue.front;
+                    QueueNode* prev = NULL;
+                    
+                    while (current != NULL) {
+                        if (current->pcb == process) {
+                            if (prev == NULL) {
+                                system_state.ready_queue.front = current->next;
+                            } else {
+                                prev->next = current->next;
+                            }
+                            if (current == system_state.ready_queue.rear) {
+                                system_state.ready_queue.rear = prev;
+                            }
+                            system_state.ready_queue.size--;
+                            free(current);
+                            break;
+                        }
+                        prev = current;
+                        current = current->next;
+                    }
+                    pthread_mutex_unlock(&system_state.ready_queue.mutex);
+                }
+            } else {
+                should_log_finish = 1;
+                pthread_mutex_unlock(&process->mutex);
+            }
+            
+            if (should_log_finish) {
+                const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
+                log_process_finish(scheduler_name, process->pid);
+            }
+        }
+        
+        usleep(10000);
+    }
+    
+    add_log_message("Escalonador por Prioridade CPU%d finalizado\n", cpu_id);
+}
+#endif
+
+#ifdef MULTI
+void* scheduler_thread_cpu2(void* arg) {
+    int cpu_id = 1; // CPU 1
+    (void)arg;
+    
+    while (1) {
+        // Verifica se deve terminar
+        if (system_state.generator_done && is_queue_empty(&system_state.ready_queue)) {
+            break;
+        }
+        
+        switch (system_state.scheduler_type) {
+            case FCFS:
+                schedule_fcfs_cpu(cpu_id);
+                break;
+            case ROUND_ROBIN:
+                schedule_round_robin_cpu(cpu_id);
+                break;
+            case PRIORITY:
+                schedule_priority_cpu(cpu_id);
+                break;
+            default:
+                fprintf(stderr, "Erro: tipo de escalonador desconhecido CPU2\n");
+                break;
+        }
+        
+        usleep(10000);
+    }
+    
+    log_scheduler_end();
     return NULL;
 }
 

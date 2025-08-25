@@ -58,6 +58,31 @@ PCB* check_higher_priority_process(int current_priority);
 void sleep_ms(int milliseconds);
 
 /**
+ * Thread do escalonador para um CPU específico
+ * @param arg Ponteiro para o ID do CPU
+ * @return NULL
+ */
+void* scheduler_thread_cpu(void* arg);
+
+/**
+ * Algoritmo FCFS para CPU específico
+ * @param cpu_id ID do CPU
+ */
+void schedule_fcfs_cpu(int cpu_id);
+
+/**
+ * Algoritmo Round Robin para CPU específico
+ * @param cpu_id ID do CPU
+ */
+void schedule_round_robin_cpu(int cpu_id);
+
+/**
+ * Algoritmo de Prioridade para CPU específico
+ * @param cpu_id ID do CPU
+ */
+void schedule_priority_cpu(int cpu_id);
+
+/**
  * Obtém o tempo atual em milissegundos desde o início da simulação
  * @return Tempo em milissegundos
  */

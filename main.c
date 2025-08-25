@@ -64,17 +64,25 @@ int main(int argc, char* argv[]) {
     
     // Cria a thread do escalonador
     pthread_t scheduler_thread_id;
+#ifdef MONO
     if (pthread_create(&scheduler_thread_id, NULL, scheduler_thread, NULL) != 0) {
         fprintf(stderr, "Erro ao criar thread do escalonador\n");
         cleanup_system();
         return 1;
     }
-    
-#ifdef MULTI
-    // Cria a segunda thread do escalonador para multiprocessador
+#else
+    // No modo multiprocessador, cria threads para cada CPU
+    static int cpu1_id = 0, cpu2_id = 1;
     pthread_t scheduler_thread_cpu2_id;
-    if (pthread_create(&scheduler_thread_cpu2_id, NULL, scheduler_thread_cpu2, NULL) != 0) {
-        fprintf(stderr, "Erro ao criar segunda thread do escalonador\n");
+    
+    if (pthread_create(&scheduler_thread_id, NULL, scheduler_thread_cpu, &cpu1_id) != 0) {
+        fprintf(stderr, "Erro ao criar thread do escalonador CPU 1\n");
+        cleanup_system();
+        return 1;
+    }
+    
+    if (pthread_create(&scheduler_thread_cpu2_id, NULL, scheduler_thread_cpu, &cpu2_id) != 0) {
+        fprintf(stderr, "Erro ao criar thread do escalonador CPU 2\n");
         cleanup_system();
         return 1;
     }
@@ -251,9 +259,8 @@ int read_input_file(const char* filename) {
 void* process_thread_function(void* arg) {
     TCB* tcb = (TCB*)arg;
     PCB* pcb = tcb->pcb;
-    int thread_index = tcb->thread_index;
     
-    add_log_message("Thread %d do processo PID %d iniciada\n", thread_index, pcb->pid);
+    // add_log_message("Thread %d do processo PID %d iniciada\n", thread_index, pcb->pid);
     
     while (1) {
         pthread_mutex_lock(&pcb->mutex);
@@ -266,8 +273,8 @@ void* process_thread_function(void* arg) {
         // Verifica se o processo foi finalizado
         if (pcb->state == FINISHED) {
             pthread_mutex_unlock(&pcb->mutex);
-            add_log_message("Thread %d do processo PID %d terminou (estado FINISHED)\n", 
-                           thread_index, pcb->pid);
+            // add_log_message("Thread %d do processo PID %d terminou (estado FINISHED)\n", 
+            //                thread_index, pcb->pid);
             break;
         }
         
@@ -277,8 +284,8 @@ void* process_thread_function(void* arg) {
             pcb->state = FINISHED;
             pthread_cond_broadcast(&pcb->cv);
             pthread_mutex_unlock(&pcb->mutex);
-            add_log_message("Thread %d do processo PID %d detectou fim de execução\n", 
-                           thread_index, pcb->pid);
+            // add_log_message("Thread %d do processo PID %d detectou fim de execução\n", 
+            //                thread_index, pcb->pid);
             break;
         }
         
@@ -293,8 +300,8 @@ void* process_thread_function(void* arg) {
         if (pcb->remaining_time > 0) {
             pcb->remaining_time -= 500; // Decrementa 500ms
             
-            add_log_message("Thread %d do processo PID %d executou 500ms (restante: %dms)\n",
-                           thread_index, pcb->pid, pcb->remaining_time);
+            // add_log_message("Thread %d do processo PID %d executou 500ms (restante: %dms)\n",
+            //                thread_index, pcb->pid, pcb->remaining_time);
             
             // Se remaining_time <= 0, muda estado para FINISHED e sinaliza todas as threads
             if (pcb->remaining_time <= 0) {
@@ -302,8 +309,8 @@ void* process_thread_function(void* arg) {
                 pcb->state = FINISHED;
                 pthread_cond_broadcast(&pcb->cv); // Acorda todas as threads do processo
                 
-                add_log_message("Thread %d do processo PID %d finalizou execução completa\n", 
-                               thread_index, pcb->pid);
+                // add_log_message("Thread %d do processo PID %d finalizou execução completa\n", 
+                //                thread_index, pcb->pid);
                 pthread_mutex_unlock(&pcb->mutex);
                 break;
             }
@@ -312,7 +319,7 @@ void* process_thread_function(void* arg) {
         pthread_mutex_unlock(&pcb->mutex);
     }
     
-    add_log_message("Thread %d do processo PID %d terminada\n", thread_index, pcb->pid);
+    // add_log_message("Thread %d do processo PID %d terminada\n", thread_index, pcb->pid);
     free(tcb); // Libera a estrutura TCB
     return NULL;
 }
@@ -388,15 +395,8 @@ void* process_generator_thread(void* arg) {
         
         // Timeout de segurança
         if (iterations > 10000) {
-            add_log_message("AVISO: Thread geradora atingiu limite de iteracoes - terminando forcadamente\n");
-            add_log_message("Processos restantes: %d, Tempo atual: %ldms\n", processes_remaining, current_time);
+            add_log_message("Thread geradora terminando forcadamente\n");
             break;
-        }
-        
-        // Log periódico para debug
-        if (iterations % 1000 == 0) {
-            add_log_message("Thread geradora - Iteracao %d, Tempo: %ldms, Processos restantes: %d\n", 
-                           iterations, current_time, processes_remaining);
         }
         
         // Verifica se algum processo deve ser criado neste momento

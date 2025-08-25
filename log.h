@@ -35,6 +35,13 @@ void log_process_start(const char* scheduler_name, int pid);
  * @param quantum Tempo do quantum em ms
  */
 void log_process_start_rr(int pid, int quantum);
+void log_process_start_priority(int pid, int priority);
+void log_process_finish_priority(int pid);
+
+// Funções para multiprocessador
+void log_process_start_cpu(const char* scheduler_name, int pid, int cpu_id);
+void log_process_start_rr_cpu(int pid, int quantum, int cpu_id);  
+void log_process_start_priority_cpu(int pid, int priority, int cpu_id);
 
 /**
  * Adiciona mensagem de finalização de processo

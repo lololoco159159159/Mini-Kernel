@@ -9,6 +9,68 @@
 // Variável global para o mutex do log
 pthread_mutex_t log_mutex;
 
+// Buffer separado para mensagens essenciais (apenas para arquivo final)
+static char* essential_log_buffer = NULL;
+static int essential_log_size = 0;
+
+// Função para verificar se uma mensagem é essencial para o arquivo final
+int is_essential_message(const char* message) {
+    // Mensagens que devem aparecer no arquivo final
+    return (strstr(message, "[FCFS] Executando processo PID") != NULL ||
+            strstr(message, "[FCFS] Processo PID") != NULL ||
+            strstr(message, "[RR] Executando processo PID") != NULL ||
+            strstr(message, "[RR] Processo PID") != NULL ||
+            strstr(message, "[PRIORITY] Executando processo PID") != NULL ||
+            strstr(message, "[PRIORITY] Processo PID") != NULL ||
+            strstr(message, "Escalonador terminou execução de todos processos") != NULL);
+}
+
+// Função para adicionar mensagem ao buffer essencial
+void add_essential_log_message(const char* format, ...) {
+    pthread_mutex_lock(&log_mutex);
+    
+    va_list args;
+    va_start(args, format);
+    
+    // Calcula o tamanho necessário para a nova mensagem
+    int needed_size = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+    
+    // Aloca buffer essencial se necessário
+    if (essential_log_buffer == NULL) {
+        essential_log_buffer = malloc(MAX_LOG_SIZE);
+        if (essential_log_buffer == NULL) {
+            pthread_mutex_unlock(&log_mutex);
+            return;
+        }
+        essential_log_buffer[0] = '\0';
+        essential_log_size = 0;
+    }
+    
+    // Verifica se há espaço suficiente no buffer essencial
+    if (essential_log_size + needed_size + 1 >= MAX_LOG_SIZE) {
+        int new_size = MAX_LOG_SIZE * 2;
+        char* new_buffer = realloc(essential_log_buffer, new_size);
+        if (new_buffer == NULL) {
+            pthread_mutex_unlock(&log_mutex);
+            return;
+        }
+        essential_log_buffer = new_buffer;
+    }
+    
+    // Adiciona a mensagem ao buffer essencial
+    va_start(args, format);
+    int written = vsnprintf(essential_log_buffer + essential_log_size, 
+                           MAX_LOG_SIZE - essential_log_size, format, args);
+    va_end(args);
+    
+    if (written > 0) {
+        essential_log_size += written;
+    }
+    
+    pthread_mutex_unlock(&log_mutex);
+}
+
 void init_log_system() {
     pthread_mutex_init(&log_mutex, NULL);
     
@@ -76,15 +138,36 @@ void log_process_created(int pid, int num_threads) {
 }
 
 void log_process_start(const char* scheduler_name, int pid) {
-    add_log_message("[%s] Executando processo PID %d\n", scheduler_name, pid);
+    add_essential_log_message("[%s] Executando processo PID %d\n", scheduler_name, pid);
 }
 
 void log_process_start_rr(int pid, int quantum) {
-    add_log_message("[RR] Executando processo PID %d com quantum %dms\n", pid, quantum);
+    add_essential_log_message("[RR] Executando processo PID %d com quantum %dms\n", pid, quantum);
+}
+
+void log_process_start_priority(int pid, int priority) {
+    add_essential_log_message("[PRIORITY] Executando processo PID %d prioridade %d \n", pid, priority);
+}
+
+// Funções para multiprocessador
+void log_process_start_cpu(const char* scheduler_name, int pid, int cpu_id) {
+    add_essential_log_message("[%s] Executando processo PID %d // processador %d\n", scheduler_name, pid, cpu_id);
+}
+
+void log_process_start_rr_cpu(int pid, int quantum, int cpu_id) {
+    add_essential_log_message("[RR] Executando processo PID %d com quantum %dms // processador %d\n", pid, quantum, cpu_id);
+}
+
+void log_process_start_priority_cpu(int pid, int priority, int cpu_id) {
+    add_essential_log_message("[PRIORITY] Executando processo PID %d prioridade %d // processador %d\n", pid, priority, cpu_id);
+}
+
+void log_process_finish_priority(int pid) {
+    add_essential_log_message("[RRIORITY] Processo PID %d finalizado\n", pid);
 }
 
 void log_process_finish(const char* scheduler_name, int pid) {
-    add_log_message("[%s] Processo PID %d finalizado\n", scheduler_name, pid);
+    add_essential_log_message("[%s] Processo PID %d finalizado\n", scheduler_name, pid);
 }
 
 void log_process_preempted(const char* scheduler_name, int pid) {
@@ -96,7 +179,7 @@ void log_quantum_expired(const char* scheduler_name, int pid) {
 }
 
 void log_scheduler_end() {
-    add_log_message("Escalonador terminou execução de todos processos\n");
+    add_essential_log_message("Escalonador terminou execução de todos processos\n");
 }
 
 void add_log_with_timestamp(const char* message) {
@@ -120,14 +203,17 @@ int save_log_to_file(const char* filename) {
         return 0;
     }
     
-    if (system_state.log_buffer != NULL && system_state.log_size > 0) {
-        size_t written = fwrite(system_state.log_buffer, 1, system_state.log_size, file);
-        if (written != (size_t)system_state.log_size) {
+    // Salva o log essencial no arquivo (em vez do log completo)
+    if (essential_log_buffer != NULL && essential_log_buffer[0] != '\0') {
+        size_t essential_size = strlen(essential_log_buffer);
+        size_t written = fwrite(essential_log_buffer, 1, essential_size, file);
+        if (written != essential_size) {
             fprintf(stderr, "AVISO: Nem todo o log foi escrito no arquivo\n");
         }
     }
     
     fclose(file);
+    
     pthread_mutex_unlock(&log_mutex);
     
     return 1;

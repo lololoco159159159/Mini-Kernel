@@ -79,6 +79,10 @@ void log_process_start(const char* scheduler_name, int pid) {
     add_log_message("[%s] Executando processo PID %d\n", scheduler_name, pid);
 }
 
+void log_process_start_rr(int pid, int quantum) {
+    add_log_message("[RR] Executando processo PID %d com quantum %dms\n", pid, quantum);
+}
+
 void log_process_finish(const char* scheduler_name, int pid) {
     add_log_message("[%s] Processo PID %d finalizado\n", scheduler_name, pid);
 }
@@ -92,8 +96,7 @@ void log_quantum_expired(const char* scheduler_name, int pid) {
 }
 
 void log_scheduler_end() {
-    add_log_message("=== ESCALONADOR TERMINOU ===\n");
-    add_log_message("Todos os processos finalizaram execucao\n");
+    add_log_message("Escalonador terminou execução de todos processos\n");
 }
 
 void add_log_with_timestamp(const char* message) {

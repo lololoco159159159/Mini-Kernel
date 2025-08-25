@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) {
     // Inicializa o escalonador
     int quantum = THREAD_EXECUTION_TIME;
     if (system_state.scheduler_type == ROUND_ROBIN) {
-        quantum = 1000; // Quantum maior para Round Robin (1000ms = 1s)
+        quantum = 500; // Quantum para Round Robin (500ms)
         add_log_message("CONFIGURANDO QUANTUM RR: %dms\n", quantum);
     }
     init_scheduler(system_state.scheduler_type, quantum);

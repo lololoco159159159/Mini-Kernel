@@ -121,11 +121,10 @@ void schedule_round_robin() {
     
     add_log_message("Escalonador Round Robin iniciado (quantum: %dms)\n", system_state.quantum);
     
-    // Versão extremamente simplificada - como o FCFS mas com logs diferentes
     while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
         iteration_count++;
         
-        if (iteration_count > 50) {
+        if (iteration_count > 100) {
             add_log_message("AVISO: Escalonador RR atingiu limite de iteracoes\n");
             break;
         }
@@ -134,22 +133,34 @@ void schedule_round_robin() {
             PCB* process = dequeue_process(&system_state.ready_queue);
             if (process != NULL) {
                 add_log_message("RR: Executando processo PID %d\n", process->pid);
-                log_process_start(scheduler_name, process->pid);
                 
-                // Versão simplificada: apenas fazer o processo rodar até terminar
+                // Usar função específica para RR
+                log_process_start_rr(process->pid, system_state.quantum);
+                
+                // Colocar em execução
                 set_process_running(process);
                 
-                // Aguardar término simples
+                // Aguardar por quantum ou até terminar
+                int quantum_time = 0;
                 pthread_mutex_lock(&process->mutex);
-                while (process->state != FINISHED) {
+                while (process->state != FINISHED && quantum_time < system_state.quantum) {
                     pthread_mutex_unlock(&process->mutex);
                     usleep(10000); // 10ms
+                    quantum_time += 10;
                     pthread_mutex_lock(&process->mutex);
                 }
-                pthread_mutex_unlock(&process->mutex);
                 
-                log_process_finish(scheduler_name, process->pid);
-                add_log_message("RR: Processo PID %d terminou\n", process->pid);
+                if (process->state == FINISHED) {
+                    pthread_mutex_unlock(&process->mutex);
+                    log_process_finish(scheduler_name, process->pid);
+                    add_log_message("RR: Processo PID %d terminou\n", process->pid);
+                } else {
+                    // Quantum expirado, recolocar na fila
+                    pthread_mutex_unlock(&process->mutex);
+                    stop_process_execution(process);
+                    enqueue_process(&system_state.ready_queue, process);
+                    add_log_message("RR: Quantum expirado para processo PID %d - recolocado na fila\n", process->pid);
+                }
             }
         }
         

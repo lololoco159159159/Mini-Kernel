@@ -30,6 +30,13 @@ void log_system_start();
 void log_process_start(const char* scheduler_name, int pid);
 
 /**
+ * Adiciona mensagem de início de execução de processo para Round Robin
+ * @param pid PID do processo  
+ * @param quantum Tempo do quantum em ms
+ */
+void log_process_start_rr(int pid, int quantum);
+
+/**
  * Adiciona mensagem de finalização de processo
  * @param scheduler_name Nome da política de escalonamento
  * @param pid PID do processo

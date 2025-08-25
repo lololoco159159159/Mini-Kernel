@@ -1,0 +1,86 @@
+=== INICIO DA SIMULACAO DO MINI-KERNEL ===
+Sistema de log inicializado - Buffer: 10000 bytes
+Iniciando leitura do arquivo: entradas/1.txt
+Numero de processos a serem criados: 3
+PCB criado - PID: 1, Duracao: 1000ms, Prioridade: 3, Threads: 2, Chegada: 0ms
+PCB criado - PID: 2, Duracao: 2000ms, Prioridade: 1, Threads: 1, Chegada: 200ms
+PCB criado - PID: 3, Duracao: 1500ms, Prioridade: 2, Threads: 1, Chegada: 100ms
+Politica de escalonamento: FCFS (1)
+Leitura do arquivo concluida com sucesso
+Total de PCBs inicializados: 3
+=== SISTEMA INICIADO ===
+Escalonador: FCFS
+Numero de processos: 3
+Quantum (para RR): 0 ms
+Aguardando threads terminarem...
+Aguardando threads terminarem...
+Escalonador FCFS iniciado
+Thread geradora iniciada
+Criando processo PID 1 (tempo: 1ms, chegada: 0ms)
+Processo PID 1 criado com 2 threads
+Processo PID 1 criado com 2 threads
+Processo PID 1 adicionado a fila de prontos
+Thread 0 do processo PID 1 iniciada
+Thread 1 do processo PID 1 iniciada
+Executando processo PID 1 por 1000ms
+[FCFS] Executando processo PID 1
+Criando processo PID 3 (tempo: 102ms, chegada: 100ms)
+Processo PID 3 criado com 1 threads
+Processo PID 3 criado com 1 threads
+Processo PID 3 adicionado a fila de prontos
+Thread 0 do processo PID 3 iniciada
+Criando processo PID 2 (tempo: 202ms, chegada: 200ms)
+Processo PID 2 criado com 1 threads
+Processo PID 2 criado com 1 threads
+Processo PID 2 adicionado a fila de prontos
+Thread 0 do processo PID 2 iniciada
+Thread geradora finalizou - todos os processos criados
+Thread geradora terminou
+Thread 0 do processo PID 1 executou 500ms (restante: 500ms)
+Thread 1 do processo PID 1 executou 500ms (restante: 0ms)
+Thread 1 do processo PID 1 finalizou execução completa
+Thread 1 do processo PID 1 terminada
+[FCFS] Processo PID 1 finalizado
+Processo PID 1 finalizado
+Executando processo PID 3 por 1500ms
+[FCFS] Executando processo PID 3
+Thread 0 do processo PID 1 terminou (estado FINISHED)
+Thread 0 do processo PID 1 terminada
+Thread 0 do processo PID 3 executou 500ms (restante: 1000ms)
+Thread 0 do processo PID 3 executou 500ms (restante: 500ms)
+Thread 0 do processo PID 3 executou 500ms (restante: 0ms)
+Thread 0 do processo PID 3 finalizou execução completa
+Thread 0 do processo PID 3 terminada
+[FCFS] Processo PID 3 finalizado
+Processo PID 3 finalizado
+Executando processo PID 2 por 2000ms
+[FCFS] Executando processo PID 2
+Thread 0 do processo PID 2 executou 500ms (restante: 1500ms)
+Thread 0 do processo PID 2 executou 500ms (restante: 1000ms)
+Thread 0 do processo PID 2 executou 500ms (restante: 500ms)
+Thread 0 do processo PID 2 executou 500ms (restante: 0ms)
+Thread 0 do processo PID 2 finalizou execução completa
+Thread 0 do processo PID 2 terminada
+[FCFS] Processo PID 2 finalizado
+Processo PID 2 finalizado
+Escalonador FCFS finalizado apos 4 iteracoes
+Escalonador terminou execução de todos processos
+Thread escalonador terminou
+Todas as threads principais terminaram
+=== AGUARDANDO TÉRMINO DE TODAS AS THREADS DOS PROCESSOS ===
+Aguardando 2 threads do processo PID 1...
+Thread 0 do processo PID 1 finalizada com sucesso
+Thread 1 do processo PID 1 finalizada com sucesso
+Todas as threads do processo PID 1 finalizaram
+Aguardando 1 threads do processo PID 2...
+Thread 0 do processo PID 2 finalizada com sucesso
+Todas as threads do processo PID 2 finalizaram
+Aguardando 1 threads do processo PID 3...
+Thread 0 do processo PID 3 finalizada com sucesso
+Todas as threads do processo PID 3 finalizaram
+Todos os processos finalizaram execucao
+
+=== ESTATISTICAS FINAIS ===
+Total de processos: 3
+Politica de escalonamento: FCFS
+=== FIM DA SIMULACAO ===

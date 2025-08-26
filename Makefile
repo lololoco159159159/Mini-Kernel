@@ -2,12 +2,13 @@
 # Mini-Kernel Multithread com Escalonamento
 
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -pthread
+CFLAGS = -Wall -Wextra -std=c99 -pthread -Ilib
 TARGET = trabSO
 
 # Diretórios
 OBJDIR = obj
-SRCDIR = .
+SRCDIR = src
+LIBDIR = lib
 
 # Arquivos fonte
 SOURCES = main.c scheduler.c queue.c log.c
@@ -36,7 +37,7 @@ $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
 # Compilação dos arquivos objeto
-$(OBJDIR)/%.o: $(SRCDIR)/%.c $(HEADERS)
+$(OBJDIR)/%.o: $(SRCDIR)/%.c $(addprefix $(LIBDIR)/,$(HEADERS))
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Target para debug (com símbolos de debug)

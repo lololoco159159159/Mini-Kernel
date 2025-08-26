@@ -49,7 +49,6 @@ int main(int argc, char* argv[]) {
     int quantum = THREAD_EXECUTION_TIME;
     if (system_state.scheduler_type == ROUND_ROBIN) {
         quantum = 500; // Quantum para Round Robin (500ms)
-        add_log_message("CONFIGURANDO QUANTUM RR: %dms\n", quantum);
     }
     init_scheduler(system_state.scheduler_type, quantum);
     
@@ -78,29 +77,14 @@ int main(int argc, char* argv[]) {
     }
 #endif
     
-    // Aguarda as threads principais terminarem (com timeout)
-    add_log_message("Aguardando threads terminarem...\n");
-    
-    // Aguarda as threads principais terminarem
-    add_log_message("Aguardando threads terminarem...\n");
     
     pthread_join(generator_thread, NULL);
-    add_log_message("Thread geradora terminou\n");
     
     pthread_join(scheduler_thread_id, NULL);
-    add_log_message("Thread escalonador terminou\n");
-    
-    add_log_message("Todas as threads principais terminaram\n");
     
     // Passo 9: Garantir término de todas as threads dos processos (pthread_join)
     wait_for_all_threads();
     
-    // Estatísticas finais
-    add_log_message("\n=== ESTATISTICAS FINAIS ===\n");
-    add_log_message("Total de processos: %d\n", system_state.process_count);
-    add_log_message("Politica de escalonamento: %s\n", get_scheduler_name(system_state.scheduler_type));
-    add_log_message("=== FIM DA SIMULACAO ===\n");
-
     save_log_to_file("log_execucao_minikernel.txt");
     cleanup_system();
     return 0;
@@ -113,16 +97,12 @@ int read_input_file(const char* filename) {
         return 0;
     }
     
-    add_log_message("Iniciando leitura do arquivo: %s\n", filename);
-    
     // Lê número de processos
     if (fscanf(file, "%d", &system_state.process_count) != 1 || system_state.process_count <= 0) {
         add_log_message("ERRO: Formato invalido - numero de processos\n");
         fclose(file);
         return 0;
     }
-    
-    add_log_message("Numero de processos a serem criados: %d\n", system_state.process_count);
     
     // Valida limite máximo de processos
     if (system_state.process_count > MAX_PROCESSES) {
@@ -200,10 +180,6 @@ int read_input_file(const char* filename) {
         
         // Inicializar thread_ids como NULL - será alocado em create_process_threads
         pcb->thread_ids = NULL;
-        
-        // Log da criação bem-sucedida do PCB
-        add_log_message("PCB criado - PID: %d, Duracao: %dms, Prioridade: %d, Threads: %d, Chegada: %dms\n",
-                       pcb->pid, pcb->process_len, pcb->priority, pcb->num_threads, pcb->start_time);
     }
     
     // Lê política de escalonamento
@@ -226,13 +202,7 @@ int read_input_file(const char* filename) {
     
     system_state.scheduler_type = (SchedulerType)scheduler_type_int;
     
-    add_log_message("Politica de escalonamento: %s (%d)\n", 
-                   get_scheduler_name(system_state.scheduler_type), scheduler_type_int);
-    
     fclose(file);
-    
-    add_log_message("Leitura do arquivo concluida com sucesso\n");
-    add_log_message("Total de PCBs inicializados: %d\n", system_state.process_count);
     
     return 1;
 }
@@ -346,7 +316,6 @@ int create_process_threads(PCB* pcb) {
         }
     }
     
-    add_log_message("Processo PID %d criado com %d threads\n", pcb->pid, pcb->num_threads);
     return 1;
 }
 
@@ -363,8 +332,6 @@ int create_process_threads(PCB* pcb) {
 void* process_generator_thread(void* arg) {
     (void)arg; // Suprime warning
     
-    add_log_message("Thread geradora iniciada\n");
-    
     // Array para controlar quais processos já foram criados
     int* process_created = calloc(system_state.process_count, sizeof(int));
     if (process_created == NULL) {
@@ -374,18 +341,10 @@ void* process_generator_thread(void* arg) {
     }
     
     int processes_remaining = system_state.process_count;
-    int iterations = 0;
     
     // Loop principal: monitora tempo e cria processos conforme chegada
     while (processes_remaining > 0) {
         long current_time = calculate_elapsed_time();
-        iterations++;
-        
-        // Timeout de segurança
-        if (iterations > 10000) {
-            add_log_message("Thread geradora terminando forcadamente\n");
-            break;
-        }
         
         // Verifica se algum processo deve ser criado neste momento
         for (int i = 0; i < system_state.process_count; i++) {
@@ -394,8 +353,6 @@ void* process_generator_thread(void* arg) {
                 
                 // Chegou o tempo de criar este processo?
                 if (current_time >= pcb->start_time) {
-                    add_log_message("Criando processo PID %d (tempo: %ldms, chegada: %dms)\n", 
-                                   pcb->pid, current_time, pcb->start_time);
                     
                     // Cria as threads do processo
                     if (create_process_threads(pcb)) {
@@ -403,7 +360,6 @@ void* process_generator_thread(void* arg) {
                         
                         // Adiciona o processo à fila de prontos
                         enqueue_process(&system_state.ready_queue, pcb);
-                        add_log_message("Processo PID %d adicionado a fila de prontos\n", pcb->pid);
                         
                         // Sinalizar o scheduler que há novo processo
                         pthread_mutex_lock(&system_state.scheduler_mutex);
@@ -428,7 +384,6 @@ void* process_generator_thread(void* arg) {
     // Libera memória e sinaliza conclusão
     free(process_created);
     system_state.generator_done = 1;
-    add_log_message("Thread geradora finalizou - todos os processos criados\n");
     
     return NULL;
 }
@@ -480,26 +435,16 @@ void cleanup_system() {
 void wait_for_all_threads() {
     if (system_state.pcb_list == NULL) return;
     
-    add_log_message("=== AGUARDANDO TÉRMINO DE TODAS AS THREADS DOS PROCESSOS ===\n");
-    
     for (int i = 0; i < system_state.process_count; i++) {
         PCB* pcb = &system_state.pcb_list[i];
         
-        add_log_message("Aguardando %d threads do processo PID %d...\n", pcb->num_threads, pcb->pid);
-        
         // Garantir término de todas as threads do processo (pthread_join)
         for (int j = 0; j < pcb->num_threads; j++) {
-            if (pthread_join(pcb->thread_ids[j], NULL) == 0) {
-                add_log_message("Thread %d do processo PID %d finalizada com sucesso\n", j, pcb->pid);
-            } else {
+            if (pthread_join(pcb->thread_ids[j], NULL) != 0) {
                 add_log_message("AVISO: Falha ao aguardar thread %d do processo PID %d\n", j, pcb->pid);
             }
         }
-        
-        add_log_message("Todas as threads do processo PID %d finalizaram\n", pcb->pid);
     }
-    
-    add_log_message("Todos os processos finalizaram execucao\n");
 }
 
 void cleanup_pcb_list(int count) {

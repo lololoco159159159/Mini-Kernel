@@ -13,8 +13,11 @@
 void init_scheduler(SchedulerType scheduler_type, int quantum) {
     system_state.scheduler_type = scheduler_type;
     system_state.quantum = quantum;
-    system_state.current_process = NULL;
     system_state.generator_done = 0;
+    
+    // Inicializa mutexes e condições
+    pthread_mutex_init(&system_state.scheduler_mutex, NULL);
+    pthread_cond_init(&system_state.scheduler_cv, NULL);
     
     // Inicializa o tempo de início
     struct timeval tv;
@@ -22,17 +25,15 @@ void init_scheduler(SchedulerType scheduler_type, int quantum) {
     system_state.start_time_ms = tv.tv_sec * 1000 + tv.tv_usec / 1000;
     
 #ifdef MULTI
-    system_state.current_process_cpu2 = NULL;
+    system_state.num_cpus = 2;
+    system_state.current_process_array[0] = NULL;
+    system_state.current_process_array[1] = NULL;
     pthread_mutex_init(&system_state.cpu2_mutex, NULL);
 #endif
 }
 
 void* scheduler_thread(void* arg) {
-#ifdef MULTI
-    int cpu_id = (arg != NULL) ? *((int*)arg) : 0; // CPU 0 por padrão
-#else
     (void)arg; // Suprime warning de parâmetro não utilizado  
-#endif
     
     while (1) {
         // Verifica se deve terminar
@@ -42,25 +43,13 @@ void* scheduler_thread(void* arg) {
         
         switch (system_state.scheduler_type) {
             case FCFS:
-#ifdef MULTI
-                schedule_fcfs_cpu(cpu_id);
-#else
                 schedule_fcfs();
-#endif
                 break;
             case ROUND_ROBIN:
-#ifdef MULTI
-                schedule_round_robin_cpu(cpu_id);
-#else
                 schedule_round_robin();
-#endif
                 break;
             case PRIORITY:
-#ifdef MULTI
-                schedule_priority_cpu(cpu_id);  
-#else
                 schedule_priority();
-#endif
                 break;
             default:
                 fprintf(stderr, "Erro: tipo de escalonador desconhecido\n");
@@ -331,384 +320,265 @@ void cleanup_scheduler() {
 }
 
 #ifdef MULTI
-// Thread do escalonador para CPU específico (multiprocessador)
-void* scheduler_thread_cpu(void* arg) {
-    int cpu_id = *(int*)arg;
-    
-    add_log_message("Escalonador iniciado (CPU %d)\n", cpu_id);
-    
-    while (true) {
-        // Executa algoritmo baseado no tipo
-        switch (system_state.scheduler_type) {
-            case FCFS:
-                schedule_fcfs_cpu(cpu_id);
-                break;
-            case ROUND_ROBIN:
-                schedule_round_robin_cpu(cpu_id);
-                break;
-            case PRIORITY:
-                schedule_priority_cpu(cpu_id);
-                break;
-            default:
-                fprintf(stderr, "Erro: tipo de escalonador desconhecido\n");
-                break;
-        }
-        
-        // Verifica condição de parada
-        if (system_state.generator_done && is_queue_empty(&system_state.ready_queue)) {
-            break;
-        }
-        
-        // Pequena pausa
-        usleep(10000); // 10ms
-    }
-    
-    // Apenas o primeiro CPU que terminar chama log_scheduler_end
-    static int scheduler_ended = 0;
-    if (__sync_bool_compare_and_swap(&scheduler_ended, 0, 1)) {
-        log_scheduler_end();
-    }
-    
-    add_log_message("Escalonador terminado (CPU %d)\n", cpu_id);
-    return NULL;
-}
-
-// Função auxiliar para obter processo para CPU específico (multiprocessador)
-PCB* get_process_for_cpu(int cpu_id) {
-    pthread_mutex_lock(&system_state.ready_queue.mutex);
-    
-    if (system_state.ready_queue.front == NULL) {
-        pthread_mutex_unlock(&system_state.ready_queue.mutex);
-        return NULL;
-    }
-    
-    QueueNode* current = system_state.ready_queue.front;
-    QueueNode* prev = NULL;
-    
-    while (current != NULL) {
-        PCB* candidate = current->pcb;
-        pthread_mutex_lock(&candidate->mutex);
-        
-        // Para processos com múltiplas threads, permite execução em ambos os CPUs
-        if (candidate->state == READY) {
-            if (candidate->num_threads > 1) {
-                // Para processos multithread, não remove da fila ainda
-                pthread_mutex_unlock(&candidate->mutex);
-                pthread_mutex_unlock(&system_state.ready_queue.mutex);
-                return candidate;
-            } else {
-                // Para processos com uma thread, remove da fila
-                if (prev == NULL) {
-                    system_state.ready_queue.front = current->next;
+void handle_multiprocessor_execution(const char* policy_names[], char* log_msg) {
+    // Verificar processos terminados primeiro
+    for (int cpu = 0; cpu < system_state.num_cpus; cpu++) {
+        PCB* process = system_state.current_process_array[cpu];
+        if (process != NULL) {
+            pthread_mutex_lock(&process->mutex);
+            if (process->state == FINISHED) {
+                // Verificar se já logamos a finalização deste processo
+                bool already_logged = false;
+                for (int i = 0; i < cpu; i++) {
+                    if (system_state.current_process_array[i] == process) {
+                        already_logged = true;
+                        break;
+                    }
+                }
+                
+                if (!already_logged) {
+                    snprintf(log_msg, 256, "[%s] Processo PID %d finalizado", 
+                            policy_names[system_state.scheduler_type], process->pid);
+                    add_essential_log_message("%s\n", log_msg);
+                }
+                
+                // Limpar processo de todos os CPUs
+                for (int i = 0; i < system_state.num_cpus; i++) {
+                    if (system_state.current_process_array[i] == process) {
+                        system_state.current_process_array[i] = NULL;
+                    }
+                }
+                
+                // Para Round Robin multiprocessador, fazer rebalanceamento após término
+                if (system_state.scheduler_type == ROUND_ROBIN && system_state.num_cpus > 1) {
+                    // Coletar todos os processos ainda em execução
+                    PCB* running_processes[system_state.num_cpus];
+                    int running_count = 0;
+                    
+                    for (int i = 0; i < system_state.num_cpus; i++) {
+                        if (system_state.current_process_array[i] != NULL && system_state.current_process_array[i] != process) {
+                            running_processes[running_count++] = system_state.current_process_array[i];
+                            system_state.current_process_array[i] = NULL; // Limpar para re-alocar
+                        }
+                    }
+                    
+                    // Re-alocar processos em execução sequencialmente nos CPUs
+                    // Só fazer rebalanceamento se há processos na fila esperando
+                    if (running_count > 0 && !is_queue_empty(&system_state.ready_queue)) {
+                        for (int i = 0; i < running_count; i++) {
+                            system_state.current_process_array[i] = running_processes[i];
+                            
+                            snprintf(log_msg, 256, "[%s] Executando processo PID %d com quantum %dms // processador %d", 
+                                    policy_names[system_state.scheduler_type], running_processes[i]->pid, THREAD_EXECUTION_TIME, i);
+                            add_essential_log_message("%s\n", log_msg);
+                        }
+                    } else if (running_count > 0) {
+                        // Se não há fila, apenas restaurar processos sem re-logar
+                        for (int i = 0; i < running_count; i++) {
+                            system_state.current_process_array[i] = running_processes[i];
+                        }
+                    }
                 } else {
-                    prev->next = current->next;
-                }
-                if (current == system_state.ready_queue.rear) {
-                    system_state.ready_queue.rear = prev;
-                }
-                system_state.ready_queue.size--;
-                free(current);
-                
-                pthread_mutex_unlock(&candidate->mutex);
-                pthread_mutex_unlock(&system_state.ready_queue.mutex);
-                return candidate;
-            }
-        } else if (candidate->state == RUNNING && candidate->num_threads > 1) {
-            // Permite que outros CPUs também executem este processo multithread
-            pthread_mutex_unlock(&candidate->mutex);
-            pthread_mutex_unlock(&system_state.ready_queue.mutex);
-            return candidate;
-        }
-        
-        pthread_mutex_unlock(&candidate->mutex);
-        prev = current;
-        current = current->next;
-    }
-    
-    pthread_mutex_unlock(&system_state.ready_queue.mutex);
-    return NULL;
-}
-
-// Versões multiprocessador dos escalonadores
-void schedule_fcfs_cpu(int cpu_id) {
-    const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
-    int iteration_count = 0;
-    
-    add_log_message("Escalonador FCFS CPU%d iniciado\n", cpu_id);
-    
-    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
-        iteration_count++;
-        
-        if (iteration_count > 100) {
-            break;
-        }
-        
-        PCB* process = get_process_for_cpu(cpu_id);
-        if (process != NULL) {
-            // Log com identificação do processador
-            log_process_start_cpu(scheduler_name, process->pid, cpu_id);
-            
-            set_process_running(process);
-            
-            pthread_mutex_lock(&process->mutex);
-            while (process->state != FINISHED) {
-                pthread_mutex_unlock(&process->mutex);
-                usleep(10000);
-                pthread_mutex_lock(&process->mutex);
-            }
-            
-            // Para processos multithread, apenas o primeiro CPU a detectar o fim imprime
-            int should_log_finish = 0;
-            if (process->num_threads > 1) {
-                // Usa uma variável estática para controlar quem imprime
-                static volatile int finished_processes[MAX_PROCESSES] = {0};
-                if (__sync_bool_compare_and_swap(&finished_processes[process->pid - 1], 0, 1)) {
-                    should_log_finish = 1;
-                }
-                
-                pthread_mutex_unlock(&process->mutex);
-                
-                // Remove da fila apenas uma vez
-                if (should_log_finish) {
-                    pthread_mutex_lock(&system_state.ready_queue.mutex);
-                    QueueNode* current = system_state.ready_queue.front;
-                    QueueNode* prev = NULL;
-                    
-                    while (current != NULL) {
-                        if (current->pcb == process) {
-                            if (prev == NULL) {
-                                system_state.ready_queue.front = current->next;
-                            } else {
-                                prev->next = current->next;
-                            }
-                            if (current == system_state.ready_queue.rear) {
-                                system_state.ready_queue.rear = prev;
-                            }
-                            system_state.ready_queue.size--;
-                            free(current);
+                    // Para outras políticas, re-logar processos que continuam executando
+                    // quando há CPUs que ficaram livres
+                    bool has_free_cpu = false;
+                    for (int i = 0; i < system_state.num_cpus; i++) {
+                        if (system_state.current_process_array[i] == NULL) {
+                            has_free_cpu = true;
                             break;
                         }
-                        prev = current;
-                        current = current->next;
                     }
-                    pthread_mutex_unlock(&system_state.ready_queue.mutex);
-                }
-            } else {
-                should_log_finish = 1;
-                pthread_mutex_unlock(&process->mutex);
-            }
-            
-            if (should_log_finish) {
-                log_process_finish(scheduler_name, process->pid);
-            }
-        }
-        
-        usleep(10000);
-    }
-    
-    add_log_message("Escalonador FCFS CPU%d finalizado\n", cpu_id);
-}
-
-void schedule_round_robin_cpu(int cpu_id) {
-    const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
-    int iteration_count = 0;
-    
-    add_log_message("Escalonador Round Robin CPU%d iniciado\n", cpu_id);
-    
-    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
-        iteration_count++;
-        
-        if (iteration_count > 100) {
-            break;
-        }
-        
-        PCB* process = get_process_for_cpu(cpu_id);
-        if (process != NULL) {
-            // Log com identificação do processador
-            log_process_start_rr_cpu(process->pid, system_state.quantum, cpu_id);
-            
-            set_process_running(process);
-            
-            pthread_mutex_lock(&process->mutex);
-            while (process->state != FINISHED) {
-                pthread_mutex_unlock(&process->mutex);
-                usleep(10000);
-                pthread_mutex_lock(&process->mutex);
-            }
-            
-            // Para processos multithread, apenas o primeiro CPU a detectar o fim imprime
-            int should_log_finish = 0;
-            if (process->num_threads > 1) {
-                // Usa uma variável estática para controlar quem imprime
-                static volatile int finished_processes_rr[MAX_PROCESSES] = {0};
-                if (__sync_bool_compare_and_swap(&finished_processes_rr[process->pid - 1], 0, 1)) {
-                    should_log_finish = 1;
-                }
-                
-                pthread_mutex_unlock(&process->mutex);
-                
-                // Remove da fila apenas uma vez
-                if (should_log_finish) {
-                    pthread_mutex_lock(&system_state.ready_queue.mutex);
-                    QueueNode* current = system_state.ready_queue.front;
-                    QueueNode* prev = NULL;
                     
-                    while (current != NULL) {
-                        if (current->pcb == process) {
-                            if (prev == NULL) {
-                                system_state.ready_queue.front = current->next;
-                            } else {
-                                prev->next = current->next;
+                    if (has_free_cpu) {
+                        for (int i = 0; i < system_state.num_cpus; i++) {
+                            PCB* running_proc = system_state.current_process_array[i];
+                            if (running_proc != NULL && running_proc != process) {
+                                snprintf(log_msg, 256, "[%s] Executando processo PID %d // processador %d", 
+                                        policy_names[system_state.scheduler_type], running_proc->pid, i);
+                                add_essential_log_message("%s\n", log_msg);
                             }
-                            if (current == system_state.ready_queue.rear) {
-                                system_state.ready_queue.rear = prev;
-                            }
-                            system_state.ready_queue.size--;
-                            free(current);
-                            break;
                         }
-                        prev = current;
-                        current = current->next;
                     }
-                    pthread_mutex_unlock(&system_state.ready_queue.mutex);
                 }
-            } else {
-                should_log_finish = 1;
-                pthread_mutex_unlock(&process->mutex);
+                
+                // Sinalizar escalonador para verificar possível expansão
+                pthread_mutex_lock(&system_state.scheduler_mutex);
+                pthread_cond_signal(&system_state.scheduler_cv);
+                pthread_mutex_unlock(&system_state.scheduler_mutex);
             }
-            
-            if (should_log_finish) {
-                log_process_finish(scheduler_name, process->pid);
-            }
+            pthread_mutex_unlock(&process->mutex);
         }
-        
-        usleep(10000);
     }
     
-    add_log_message("Escalonador Round Robin CPU%d finalizado\n", cpu_id);
-}
-
-void schedule_priority_cpu(int cpu_id) {
-    add_log_message("Escalonador por Prioridade CPU%d iniciado\n", cpu_id);
-    
-    while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue)) {
-        PCB* process = get_process_for_cpu(cpu_id);
-        if (process != NULL) {
-            // Log com identificação do processador
-            log_process_start_priority_cpu(process->pid, process->priority, cpu_id);
-            
-            set_process_running(process);
-            
-            pthread_mutex_lock(&process->mutex);
-            while (process->state != FINISHED) {
-                pthread_mutex_unlock(&process->mutex);
-                usleep(10000);
-                pthread_mutex_lock(&process->mutex);
-            }
-            
-            // Para processos multithread, apenas o primeiro CPU a detectar o fim imprime
-            int should_log_finish = 0;
-            if (process->num_threads > 1) {
-                // Usa uma variável estática para controlar quem imprime
-                static volatile int finished_processes_prio[MAX_PROCESSES] = {0};
-                if (__sync_bool_compare_and_swap(&finished_processes_prio[process->pid - 1], 0, 1)) {
-                    should_log_finish = 1;
+    // Verificar se há processos em execução que podem se expandir para CPUs livres
+    // Apenas para Round Robin quando não há processos na fila
+    if (is_queue_empty(&system_state.ready_queue) && system_state.scheduler_type == ROUND_ROBIN) {
+        for (int cpu = 0; cpu < system_state.num_cpus; cpu++) {
+            PCB* running_process = system_state.current_process_array[cpu];
+            if (running_process != NULL && running_process->state == RUNNING) {
+                // Verificar se processo pode usar mais CPUs
+                int current_cpus = 0;
+                for (int i = 0; i < system_state.num_cpus; i++) {
+                    if (system_state.current_process_array[i] == running_process) {
+                        current_cpus++;
+                    }
                 }
                 
-                pthread_mutex_unlock(&process->mutex);
-                
-                // Remove da fila apenas uma vez
-                if (should_log_finish) {
-                    pthread_mutex_lock(&system_state.ready_queue.mutex);
-                    QueueNode* current = system_state.ready_queue.front;
-                    QueueNode* prev = NULL;
+                // Expandir para CPUs livres
+                if (current_cpus < system_state.num_cpus) {
+                    bool expanded = false;
                     
-                    while (current != NULL) {
-                        if (current->pcb == process) {
-                            if (prev == NULL) {
-                                system_state.ready_queue.front = current->next;
-                            } else {
-                                prev->next = current->next;
-                            }
-                            if (current == system_state.ready_queue.rear) {
-                                system_state.ready_queue.rear = prev;
-                            }
-                            system_state.ready_queue.size--;
-                            free(current);
-                            break;
+                    // Alocar CPUs livres
+                    for (int free_cpu = 0; free_cpu < system_state.num_cpus; free_cpu++) {
+                        if (system_state.current_process_array[free_cpu] == NULL) {
+                            system_state.current_process_array[free_cpu] = running_process;
+                            expanded = true;
                         }
-                        prev = current;
-                        current = current->next;
                     }
-                    pthread_mutex_unlock(&system_state.ready_queue.mutex);
+                    
+                    // Se houve expansão, logar todos os CPUs onde o processo agora está executando
+                    if (expanded) {
+                        for (int all_cpu = 0; all_cpu < system_state.num_cpus; all_cpu++) {
+                            if (system_state.current_process_array[all_cpu] == running_process) {
+                                snprintf(log_msg, 256, "[%s] Executando processo PID %d com quantum %dms // processador %d", 
+                                        policy_names[system_state.scheduler_type], running_process->pid, THREAD_EXECUTION_TIME, all_cpu);
+                                add_essential_log_message("%s\n", log_msg);
+                            }
+                        }
+                    }
                 }
-            } else {
-                should_log_finish = 1;
-                pthread_mutex_unlock(&process->mutex);
-            }
-            
-            if (should_log_finish) {
-                const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
-                log_process_finish(scheduler_name, process->pid);
+                break; // Só processar um processo de cada vez
             }
         }
-        
-        usleep(10000);
     }
     
-    add_log_message("Escalonador por Prioridade CPU%d finalizado\n", cpu_id);
+    // Alocar novos processos para CPUs livres
+    for (int cpu = 0; cpu < system_state.num_cpus; cpu++) {
+        PCB* current_cpu_process = system_state.current_process_array[cpu];
+        if (current_cpu_process == NULL) {
+            PCB* process = NULL;
+            
+            // Selecionar processo baseado na política
+            switch (system_state.scheduler_type) {
+                case FCFS:
+                    process = dequeue_process(&system_state.ready_queue);
+                    break;
+                case PRIORITY:
+                    process = get_highest_priority_process(&system_state.ready_queue);
+                    if (process != NULL) {
+                        remove_process_from_queue(&system_state.ready_queue, process);
+                    }
+                    break;
+                case ROUND_ROBIN:
+                    process = dequeue_process(&system_state.ready_queue);
+                    break;
+            }
+
+            if (process != NULL) {
+                pthread_mutex_lock(&process->mutex);
+                process->state = RUNNING;
+                system_state.current_process_array[cpu] = process;
+                
+                if (system_state.scheduler_type == ROUND_ROBIN) {
+                    snprintf(log_msg, 256, "[%s] Executando processo PID %d com quantum %dms // processador %d", 
+                            policy_names[system_state.scheduler_type], process->pid, THREAD_EXECUTION_TIME, cpu);
+                } else {
+                    snprintf(log_msg, 256, "[%s] Executando processo PID %d // processador %d", 
+                            policy_names[system_state.scheduler_type], process->pid, cpu);
+                }
+                add_essential_log_message("%s\n", log_msg);
+                
+                pthread_cond_broadcast(&process->cv);
+                pthread_mutex_unlock(&process->mutex);
+                
+                // Se processo tem múltiplas threads, tentar usar próximo CPU livre também
+                // EXCETO para Round Robin, que deve usar apenas um CPU por processo
+                if (process->num_threads > 1 && system_state.scheduler_type != ROUND_ROBIN) {
+                    for (int next_cpu = cpu + 1; next_cpu < system_state.num_cpus; next_cpu++) {
+                        if (system_state.current_process_array[next_cpu] == NULL) {
+                            system_state.current_process_array[next_cpu] = process;
+                            
+                            snprintf(log_msg, 256, "[%s] Executando processo PID %d // processador %d", 
+                                    policy_names[system_state.scheduler_type], process->pid, next_cpu);
+                            add_essential_log_message("%s\n", log_msg);
+                            break; // Só alocar um CPU adicional por vez
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 #endif
 
 #ifdef MULTI
-void* scheduler_thread_cpu2(void* arg) {
-    int cpu_id = 1; // CPU 1
-    (void)arg;
+void* scheduler_thread_function(void* arg) {
+    (void)arg; // Suprimir warning
+    char log_msg[256];
+    const char* policy_names[] = {"", "FCFS", "RR", "PRIORITY"};
     
-    while (1) {
-        // Verifica se deve terminar
-        if (system_state.generator_done && is_queue_empty(&system_state.ready_queue)) {
+    add_log_message("[DEBUG] Iniciando scheduler_thread_function\n");
+    
+    while (true) {
+        pthread_mutex_lock(&system_state.scheduler_mutex);
+        
+        // Verificar se ainda há processos em execução
+        bool has_running_processes = false;
+        for (int cpu = 0; cpu < system_state.num_cpus; cpu++) {
+            if (system_state.current_process_array[cpu] != NULL) {
+                has_running_processes = true;
+                break;
+            }
+        }
+        
+        // printf("[DEBUG] has_running_processes: %d, generator_done: %d, queue_empty: %d\n", 
+        //        has_running_processes, system_state.generator_done, is_queue_empty(&system_state.ready_queue));
+        
+        // Debug: mostrar quais processos estão em execução
+        /*
+        for (int cpu = 0; cpu < system_state.num_cpus; cpu++) {
+            PCB* proc = system_state.current_process_array[cpu];
+            if (proc != NULL) {
+                printf("[DEBUG] CPU %d: PID %d, state %d, remaining_time %d\n", 
+                       cpu, proc->pid, proc->state, proc->remaining_time);
+            }
+        }
+        fflush(stdout);
+        */
+        
+        // Debug: mostrar estado atual
+        // add_log_message("[DEBUG] Queue empty: %d, generator_done: %d, has_running: %d\n", 
+        //                is_queue_empty(&system_state.ready_queue), system_state.generator_done, has_running_processes);
+        
+        // Aguardar se não há processos prontos e não há processos em execução
+        while (is_queue_empty(&system_state.ready_queue) && !system_state.generator_done && !has_running_processes) {
+            pthread_cond_wait(&system_state.scheduler_cv, &system_state.scheduler_mutex);
+            
+            // Recalcular após acordar
+            has_running_processes = false;
+            for (int cpu = 0; cpu < system_state.num_cpus; cpu++) {
+                if (system_state.current_process_array[cpu] != NULL) {
+                    has_running_processes = true;
+                    break;
+                }
+            }
+        }
+        
+        if (is_queue_empty(&system_state.ready_queue) && system_state.generator_done && !has_running_processes) {
+            pthread_mutex_unlock(&system_state.scheduler_mutex);
             break;
         }
         
-        switch (system_state.scheduler_type) {
-            case FCFS:
-                schedule_fcfs_cpu(cpu_id);
-                break;
-            case ROUND_ROBIN:
-                schedule_round_robin_cpu(cpu_id);
-                break;
-            case PRIORITY:
-                schedule_priority_cpu(cpu_id);
-                break;
-            default:
-                fprintf(stderr, "Erro: tipo de escalonador desconhecido CPU2\n");
-                break;
-        }
+        pthread_mutex_unlock(&system_state.scheduler_mutex);
         
-        usleep(10000);
+        // Executar algoritmo de escalonamento multiprocessador
+        handle_multiprocessor_execution(policy_names, log_msg);
+        
+        usleep(50); // 0.05ms de intervalo - muito rápido para máxima responsividade
     }
-    
-    log_scheduler_end();
+
+    add_essential_log_message("Escalonador terminou execução de todos processos\n");
     return NULL;
 }
 
-void set_process_running_cpu2(PCB* pcb) {
-    if (pcb == NULL) return;
-    
-    pthread_mutex_lock(&pcb->mutex);
-    pcb->state = RUNNING;
-    pthread_cond_broadcast(&pcb->cv);
-    pthread_mutex_unlock(&pcb->mutex);
-}
-
-void stop_process_execution_cpu2(PCB* pcb) {
-    if (pcb == NULL) return;
-    
-    pthread_mutex_lock(&pcb->mutex);
-    if (pcb->state == RUNNING) {
-        pcb->state = READY;
-    }
-    pthread_mutex_unlock(&pcb->mutex);
-}
 #endif

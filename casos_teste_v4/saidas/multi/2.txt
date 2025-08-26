@@ -1,4 +1,4 @@
-[RR] Executando processo PID 1 com quantum 500ms // procesador 0
+[RR] Executando processo PID 1 com quantum 500ms // processador 0
 [RR] Executando processo PID 3 com quantum 500ms // processador 1
 [RR] Processo PID 1 finalizado
 [RR] Executando processo PID 3 com quantum 500ms // processador 0

@@ -65,22 +65,11 @@ void sleep_ms(int milliseconds);
 void* scheduler_thread_cpu(void* arg);
 
 /**
- * Algoritmo FCFS para CPU específico
- * @param cpu_id ID do CPU
+ * Gerencia a execução multiprocessador
+ * @param policy_names Array com nomes das políticas
+ * @param log_msg Buffer para mensagens de log
  */
-void schedule_fcfs_cpu(int cpu_id);
-
-/**
- * Algoritmo Round Robin para CPU específico
- * @param cpu_id ID do CPU
- */
-void schedule_round_robin_cpu(int cpu_id);
-
-/**
- * Algoritmo de Prioridade para CPU específico
- * @param cpu_id ID do CPU
- */
-void schedule_priority_cpu(int cpu_id);
+void handle_multiprocessor_execution(const char* policy_names[], char* log_msg);
 
 /**
  * Obtém o tempo atual em milissegundos desde o início da simulação
@@ -106,6 +95,13 @@ void cleanup_scheduler();
  * @return NULL
  */
 void* scheduler_thread_cpu2(void* arg);
+
+/**
+ * Função principal do escalonador multiprocessador
+ * @param arg Argumentos da thread (não utilizado)
+ * @return NULL
+ */
+void* scheduler_thread_function(void* arg);
 
 /**
  * Coloca um processo em execução na CPU 2

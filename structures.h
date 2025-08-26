@@ -62,7 +62,7 @@ typedef struct {
     PCB* pcb_list;              // Lista de todos os processos
     int process_count;          // Número total de processos
     ReadyQueue ready_queue;     // Fila de processos prontos
-    PCB* current_process;       // Processo atualmente em execução
+    PCB* current_process;       // Processo atualmente em execução (CPU 0)
     SchedulerType scheduler_type; // Política de escalonamento
     int quantum;                // Quantum para Round Robin (ms)
     int generator_done;         // Flag para sinalizar fim da criação
@@ -70,9 +70,14 @@ typedef struct {
     int log_size;               // Tamanho atual do log
     long start_time_ms;         // Tempo de início da simulação
     
+    // Mutexes e condições para sincronização do escalonador
+    pthread_mutex_t scheduler_mutex; // Mutex para controle do escalonador
+    pthread_cond_t scheduler_cv;     // Condição para sinalização do escalonador
+    
 #ifdef MULTI
-    PCB* current_process_cpu2;  // Processo em execução na CPU 2
-    pthread_mutex_t cpu2_mutex; // Mutex para controle da CPU 2
+    PCB* current_process_array[2]; // Array para processos nos 2 CPUs (compatível com fafa)
+    int num_cpus;                  // Número de CPUs (2 para multiprocessador)
+    pthread_mutex_t cpu2_mutex;   // Mutex para controle da CPU 2
 #endif
 } SystemState;
 

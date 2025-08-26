@@ -71,18 +71,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 #else
-    // No modo multiprocessador, cria threads para cada CPU
-    static int cpu1_id = 0, cpu2_id = 1;
-    pthread_t scheduler_thread_cpu2_id;
-    
-    if (pthread_create(&scheduler_thread_id, NULL, scheduler_thread_cpu, &cpu1_id) != 0) {
-        fprintf(stderr, "Erro ao criar thread do escalonador CPU 1\n");
-        cleanup_system();
-        return 1;
-    }
-    
-    if (pthread_create(&scheduler_thread_cpu2_id, NULL, scheduler_thread_cpu, &cpu2_id) != 0) {
-        fprintf(stderr, "Erro ao criar thread do escalonador CPU 2\n");
+    // No modo multiprocessador, cria uma thread do escalonador que gerencia ambos CPUs
+    if (pthread_create(&scheduler_thread_id, NULL, scheduler_thread_function, NULL) != 0) {
+        fprintf(stderr, "Erro ao criar thread do escalonador\n");
         cleanup_system();
         return 1;
     }
@@ -99,11 +90,6 @@ int main(int argc, char* argv[]) {
     
     pthread_join(scheduler_thread_id, NULL);
     add_log_message("Thread escalonador terminou\n");
-    
-#ifdef MULTI
-    pthread_join(scheduler_thread_cpu2_id, NULL);
-    add_log_message("Segunda thread escalonador terminou\n");
-#endif
     
     add_log_message("Todas as threads principais terminaram\n");
     
@@ -416,6 +402,11 @@ void* process_generator_thread(void* arg) {
                         // Adiciona o processo à fila de prontos
                         enqueue_process(&system_state.ready_queue, pcb);
                         add_log_message("Processo PID %d adicionado a fila de prontos\n", pcb->pid);
+                        
+                        // Sinalizar o scheduler que há novo processo
+                        pthread_mutex_lock(&system_state.scheduler_mutex);
+                        pthread_cond_signal(&system_state.scheduler_cv);
+                        pthread_mutex_unlock(&system_state.scheduler_mutex);
                         
                         process_created[i] = 1;
                         processes_remaining--;

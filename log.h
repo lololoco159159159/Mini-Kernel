@@ -18,6 +18,14 @@ void init_log_system();
 void add_log_message(const char* format, ...);
 
 /**
+ * Adiciona uma mensagem formatada ao buffer essencial de log
+ * Usado para logs de execução que devem aparecer no arquivo final
+ * @param format String de formato (como printf)
+ * @param ... Argumentos variáveis
+ */
+void add_essential_log_message(const char* format, ...);
+
+/**
  * Adiciona mensagem de início do sistema
  */
 void log_system_start();

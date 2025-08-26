@@ -54,9 +54,51 @@ make multiprocessador  # Versão com 2 CPUs
 
 ## Arquitetura
 
-- **main.c**: Coordenação geral e criação de threads
-- **scheduler.c**: Implementação dos algoritmos de escalonamento
-- **queue.c**: Fila de processos prontos thread-safe
-- **log.c**: Sistema de logging
-- **structures.h**: Definições de PCB, TCB e estados
-- **structures.h**: Definições de PCB, TCB e SystemState
+- **src/main.c**: Coordenação geral e criação de threads
+- **src/scheduler.c**: Implementação dos algoritmos de escalonamento
+- **src/queue.c**: Fila de processos prontos thread-safe
+- **src/log.c**: Sistema de logging
+- **lib/structures.h**: Definições de PCB, TCB e estados
+- **lib/scheduler.h**: Interface do escalonador
+- **lib/queue.h**: Interface da fila de processos
+- **lib/log.h**: Interface do sistema de logging
+
+## Estrutura do Projeto
+
+```
+Mini-Kernel/
+├── Makefile                          # Sistema de compilação
+├── README.md                         # Esta documentação
+├── Especificação - TP SO - 2025_1.pdf # Especificação do trabalho
+├── src/                              # Arquivos fonte (.c)
+│   ├── main.c                        # Programa principal
+│   ├── scheduler.c                   # Algoritmos de escalonamento
+│   ├── queue.c                       # Fila de processos prontos
+│   └── log.c                         # Sistema de logging
+├── lib/                              # Headers (.h)
+│   ├── structures.h                  # Estruturas PCB, TCB, SystemState
+│   ├── scheduler.h                   # Interface do escalonador
+│   ├── queue.h                       # Interface da fila
+│   └── log.h                         # Interface de logging
+├── obj/                              # Arquivos objeto (gerados)
+├── casos_teste_v4/                   # Casos de teste oficiais
+│   ├── entradas/                     # Arquivos de entrada
+│   └── saidas/                       # Saídas esperadas
+└── log_execucao_minikernel.txt       # Log de execução (gerado)
+```
+
+## Entrega
+
+O projeto foi empacotado no arquivo `2022100892,2022101398.tar.gz` seguindo o padrão especificado:
+
+```bash
+# Extração e compilação (monoprocessador)
+tar -xzvf 2022100892,2022101398.tar.gz
+make monoprocessador
+./trabSO entrada.txt
+
+# Extração e compilação (multiprocessador)
+tar -xzvf 2022100892,2022101398.tar.gz
+make multiprocessador
+./trabSO entrada.txt
+```

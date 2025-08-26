@@ -13,7 +13,6 @@
 #include "queue.h"
 #include "log.h"
 
-// Variável global do sistema
 SystemState system_state;
 
 // Protótipos de funções
@@ -101,13 +100,9 @@ int main(int argc, char* argv[]) {
     add_log_message("Total de processos: %d\n", system_state.process_count);
     add_log_message("Politica de escalonamento: %s\n", get_scheduler_name(system_state.scheduler_type));
     add_log_message("=== FIM DA SIMULACAO ===\n");
-    
-    // Passo 9: Salvar log no arquivo
+
     save_log_to_file("log_execucao_minikernel.txt");
-    
-    // Passo 9: Liberar memória alocada e destruir mutexes/variáveis de condição
     cleanup_system();
-    
     return 0;
 }
 
@@ -242,11 +237,18 @@ int read_input_file(const char* filename) {
     return 1;
 }
 
+/**
+ * Função principal de execução de threads de processo
+ * Cada processo executa em uma ou mais threads usando esta função:
+ * - Aguarda sinal do escalonador para transição READY→RUNNING
+ * - Simula execução do processo por duração especificada
+ * - Gera log de término e notifica escalonador
+ * - Gerencia sincronização com escalonador via mutex e condition variables
+ * Esta função implementa o ciclo de vida completo de uma thread de processo
+ */
 void* process_thread_function(void* arg) {
     TCB* tcb = (TCB*)arg;
     PCB* pcb = tcb->pcb;
-    
-    // add_log_message("Thread %d do processo PID %d iniciada\n", thread_index, pcb->pid);
     
     while (1) {
         pthread_mutex_lock(&pcb->mutex);
@@ -259,8 +261,6 @@ void* process_thread_function(void* arg) {
         // Verifica se o processo foi finalizado
         if (pcb->state == FINISHED) {
             pthread_mutex_unlock(&pcb->mutex);
-            // add_log_message("Thread %d do processo PID %d terminou (estado FINISHED)\n", 
-            //                thread_index, pcb->pid);
             break;
         }
         
@@ -270,8 +270,6 @@ void* process_thread_function(void* arg) {
             pcb->state = FINISHED;
             pthread_cond_broadcast(&pcb->cv);
             pthread_mutex_unlock(&pcb->mutex);
-            // add_log_message("Thread %d do processo PID %d detectou fim de execução\n", 
-            //                thread_index, pcb->pid);
             break;
         }
         
@@ -286,17 +284,12 @@ void* process_thread_function(void* arg) {
         if (pcb->remaining_time > 0) {
             pcb->remaining_time -= 500; // Decrementa 500ms
             
-            // add_log_message("Thread %d do processo PID %d executou 500ms (restante: %dms)\n",
-            //                thread_index, pcb->pid, pcb->remaining_time);
             
-            // Se remaining_time <= 0, muda estado para FINISHED e sinaliza todas as threads
             if (pcb->remaining_time <= 0) {
                 pcb->remaining_time = 0;
                 pcb->state = FINISHED;
                 pthread_cond_broadcast(&pcb->cv); // Acorda todas as threads do processo
                 
-                // add_log_message("Thread %d do processo PID %d finalizou execução completa\n", 
-                //                thread_index, pcb->pid);
                 pthread_mutex_unlock(&pcb->mutex);
                 break;
             }
@@ -305,7 +298,6 @@ void* process_thread_function(void* arg) {
         pthread_mutex_unlock(&pcb->mutex);
     }
     
-    // add_log_message("Thread %d do processo PID %d terminada\n", thread_index, pcb->pid);
     free(tcb); // Libera a estrutura TCB
     return NULL;
 }
@@ -358,6 +350,16 @@ int create_process_threads(PCB* pcb) {
     return 1;
 }
 
+/**
+ * Thread geradora de processos (executa em background)
+ * Cria processos dinamicamente baseado nos tempos de chegada:
+ * - Monitora tempo atual do sistema constantemente
+ * - Cria processos quando chegam seus tempos de chegada
+ * - Adiciona novos processos na fila de prontos
+ * - Notifica escalonador sobre novos processos disponíveis
+ * - Sinaliza conclusão quando todos os processos foram criados
+ * Funciona em paralelo com o escalonador para geração dinâmica de carga
+ */
 void* process_generator_thread(void* arg) {
     (void)arg; // Suprime warning
     

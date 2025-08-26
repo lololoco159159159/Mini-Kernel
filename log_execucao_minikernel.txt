@@ -1,8 +1,7 @@
-[PRIORITY] Executando processo PID 1 prioridade 2 
-[PRIORITY] Executando processo PID 2 prioridade 1 
-[RRIORITY] Processo PID 2 finalizado
-[PRIORITY] Executando processo PID 1 prioridade 2 
-[RRIORITY] Processo PID 1 finalizado
-[PRIORITY] Executando processo PID 3 prioridade 3 
-[RRIORITY] Processo PID 3 finalizado
+[FCFS] Executando processo PID 1
+[FCFS] Processo PID 1 finalizado
+[FCFS] Executando processo PID 3
+[FCFS] Processo PID 3 finalizado
+[FCFS] Executando processo PID 2
+[FCFS] Processo PID 2 finalizado
 Escalonador terminou execução de todos processos

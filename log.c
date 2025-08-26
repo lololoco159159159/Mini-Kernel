@@ -187,7 +187,7 @@ void add_log_with_timestamp(const char* message) {
     if (system_state.start_time_ms == 0) {
         add_log_message("[0 ms] %s", message);
     } else {
-        long current_time = get_current_time_ms();
+        long current_time = calculate_elapsed_time();
         add_log_message("[%ld ms] %s", current_time, message);
     }
 }

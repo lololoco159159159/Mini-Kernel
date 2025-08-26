@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
     }
 #else
     // No modo multiprocessador, cria uma thread do escalonador que gerencia ambos CPUs
-    if (pthread_create(&scheduler_thread_id, NULL, scheduler_thread_function, NULL) != 0) {
+    if (pthread_create(&scheduler_thread_id, NULL, multicore_scheduler_main, NULL) != 0) {
         fprintf(stderr, "Erro ao criar thread do escalonador\n");
         cleanup_system();
         return 1;
@@ -376,7 +376,7 @@ void* process_generator_thread(void* arg) {
     
     // Loop principal: monitora tempo e cria processos conforme chegada
     while (processes_remaining > 0) {
-        long current_time = get_current_time_ms();
+        long current_time = calculate_elapsed_time();
         iterations++;
         
         // Timeout de segurança

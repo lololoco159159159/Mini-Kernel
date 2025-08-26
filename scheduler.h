@@ -42,6 +42,18 @@ void set_process_running(PCB* pcb);
  * Para a execução de um processo (preempção ou finalização)
  * @param pcb Ponteiro para o processo
  */
+void schedule_priority();
+
+/**
+ * Configura processo para estado RUNNING
+ * @param pcb PCB do processo
+ */
+void configure_process_state(PCB* pcb);
+
+/**
+ * Para a execução de um processo (preempção ou finalização)
+ * @param pcb Ponteiro para o processo
+ */
 void stop_process_execution(PCB* pcb);
 
 /**
@@ -69,13 +81,18 @@ void* scheduler_thread_cpu(void* arg);
  * @param policy_names Array com nomes das políticas
  * @param log_msg Buffer para mensagens de log
  */
-void handle_multiprocessor_execution(const char* policy_names[], char* log_msg);
+/**
+ * Executa escalonamento para sistemas multiprocessadores
+ * @param scheduler_names Array com nomes das políticas de escalonamento
+ * @param message_buffer Buffer para mensagens de log
+ */
+void execute_multicore_scheduling(const char* scheduler_names[], char* message_buffer);
 
 /**
  * Obtém o tempo atual em milissegundos desde o início da simulação
  * @return Tempo em milissegundos
  */
-long get_current_time_ms();
+long calculate_elapsed_time();
 
 /**
  * Verifica se todos os processos terminaram
@@ -101,7 +118,7 @@ void* scheduler_thread_cpu2(void* arg);
  * @param arg Argumentos da thread (não utilizado)
  * @return NULL
  */
-void* scheduler_thread_function(void* arg);
+void* multicore_scheduler_main(void* arg);
 
 /**
  * Coloca um processo em execução na CPU 2

@@ -227,7 +227,13 @@ void cleanup_log_system() {
         system_state.log_buffer = NULL;
     }
     
+    if (essential_log_buffer != NULL) {
+        free(essential_log_buffer);
+        essential_log_buffer = NULL;
+    }
+    
     system_state.log_size = 0;
+    essential_log_size = 0;
     
     pthread_mutex_unlock(&log_mutex);
     pthread_mutex_destroy(&log_mutex);

@@ -45,6 +45,12 @@ void set_process_running(PCB* pcb);
 void schedule_priority();
 
 /**
+ * Implementação do algoritmo CFS (Completely Fair Scheduler)
+ * Utiliza Red-Black Tree para escalonamento justo baseado em vruntime
+ */
+void schedule_cfs();
+
+/**
  * Configura processo para estado RUNNING
  * @param pcb PCB do processo
  */
@@ -132,5 +138,34 @@ void set_process_running_cpu2(PCB* pcb);
  */
 void stop_process_execution_cpu2(PCB* pcb);
 #endif
+
+/**
+ * ========== FUNÇÕES CFS (Completely Fair Scheduler) ==========
+ * Implementação do Desafio Tópico 8 com Red-Black Tree
+ */
+
+/**
+ * Implementação do algoritmo CFS
+ */
+void schedule_cfs();
+
+/**
+ * Funções da Red-Black Tree para CFS
+ */
+void cfs_rb_insert(PCB* process);
+void cfs_rb_remove(PCB* process);
+PCB* cfs_rb_leftmost(PCB* node);
+PCB* rb_rotate_left(PCB* node);
+PCB* rb_rotate_right(PCB* node);
+void rb_insert_fixup(PCB* node);
+
+/**
+ * Funções de gerenciamento CFS
+ */
+PCB* cfs_select_next(void);
+int cfs_calculate_timeslice(PCB* process);
+void cfs_update_vruntime(PCB* process, int executed_time_ms);
+void cfs_init_process(PCB* process);
+int cfs_is_empty();
 
 #endif // SCHEDULER_H

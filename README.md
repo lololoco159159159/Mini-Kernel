@@ -7,6 +7,12 @@
 
 Mini-kernel multithread em C que simula escalonamento de processos com três políticas: FCFS, Round-Robin e Prioridade Preemptiva. Implementa duas versões (mono e multiprocessador) usando threads POSIX para simular execução concorrente de processos com múltiplas threads.
 
+## 🚀 SEÇÃO EXTRA: Implementação do CFS
+Implementei uma rbtree e o cpf de maneira bem isolada de modo a não atrapalhar a implementação "normal" do projeto, então foi criado dois arquivos (cfs.c e rbtree.c)
+isolados para o ponto extra.
+
+
+
 ## Características Principais
 
 - **Estruturas**: PCB (Process Control Block) e TCB (Thread Control Block)
@@ -51,6 +57,36 @@ make multiprocessador  # Versão com 2 CPUs
 1. **FCFS**: Execução por ordem de chegada (não-preemptivo)
 2. **Round Robin**: Quantum de 500ms com preempção por tempo
 3. **Prioridade**: Preempção baseada em prioridade (1=maior, 5=menor)
+
+## Decisões de Arquitetura
+
+### Uso de Variáveis Globais
+
+O projeto utiliza duas variáveis globais que são **estritamente necessárias** conforme a especificação:
+
+#### `SystemState system_state` (main.c)
+**Justificativa técnica:**
+- **Arquitetura multithread**: 4+ threads executam simultaneamente (escalonador, gerador, threads de processos)
+- **Estado compartilhado**: Fila de prontos (`ready_queue`) deve ser acessível por todas as threads
+- **Sincronização**: Mutexes (`scheduler_mutex`) precisam ser compartilhados entre threads
+- **Controle de execução**: Variáveis como `generator_done`, `current_process` são consultadas por múltiplas threads
+
+#### `pthread_mutex_t log_mutex` (log.c)
+**Justificativa técnica:**
+- **Thread-safety obrigatório**: Sistema de log é acessado simultaneamente por múltiplas threads
+- **Proteção contra race conditions**: Sem mutex global, o buffer de log seria corrompido
+- **Simplicidade**: Alternativa seria passar mutex como parâmetro para todas as funções de log
+
+### Conformidade com a Especificação
+A especificação permite explicitamente o uso de variáveis globais "quando ESTRITAMENTE necessário". 
+Nosso caso se enquadra devido à natureza multithread do sistema e requisitos de compartilhamento de estado.
+
+### Modularização Implementada
+- **Separação clara**: Arquivos `.c` em `src/`, headers `.h` em `lib/`
+- **Responsabilidades bem definidas**: Cada módulo tem função específica
+- **Interfaces limpas**: Headers definem contratos claros entre módulos
+- **Encapsulamento**: Funções internas são `static` quando possível
+- **Thread-safety**: Cada módulo gerencia sua própria sincronização
 
 ## Arquitetura
 
@@ -102,3 +138,5 @@ tar -xzvf 2022100892,2022101398.tar.gz
 make multiprocessador
 ./trabSO entrada.txt
 ```
+
+---

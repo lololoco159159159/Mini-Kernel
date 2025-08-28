@@ -247,7 +247,9 @@ const char* get_scheduler_name(SchedulerType type) {
             return "RR";
         case PRIORITY:
             return "PRIORIDADE";
+        case CFS:
+            return "CFS";
         default:
-            return "DESCONHECIDO";
+            return "DESCONHECIDO"; //erro
     }
 }

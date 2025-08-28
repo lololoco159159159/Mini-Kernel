@@ -1,7 +1,9 @@
 #define _GNU_SOURCE
-#include "scheduler.h"
-#include "queue.h"
-#include "log.h"
+#include "../lib/structures.h"
+#include "../lib/scheduler.h"
+#include "../lib/queue.h"
+#include "../lib/log.h"
+#include "../lib/cfs.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -60,6 +62,9 @@ void* scheduler_thread(void* arg) {
                 break;
             case PRIORITY:
                 schedule_priority();
+                break;
+            case CFS:
+                schedule_cfs();
                 break;
             default:
                 fprintf(stderr, "Erro: tipo de escalonador desconhecido\n");
@@ -284,6 +289,93 @@ void schedule_priority() {
     } while (!system_state.generator_done || !is_queue_empty(&system_state.ready_queue));
     
     add_log_message("Escalonador por Prioridade finalizado\n");
+}
+
+/**
+ * Implementação do algoritmo Completely Fair Scheduler (CFS)
+ * Utiliza Red-Black Tree para ordenar processos por vruntime (tempo virtual)
+ * Garante fairness distribuindo tempo de CPU proporcionalmente ao peso dos processos
+ */
+/**
+ * Algoritmo CFS (Completely Fair Scheduler)
+ * Implementação isolada e sem variáveis globais
+ */
+void schedule_cfs() {
+    const char* scheduler_name = get_scheduler_name(system_state.scheduler_type);
+    
+    add_log_message("Escalonador CFS iniciado (implementação isolada)\n");
+    
+    // Inicializa sistema CFS
+    cfs_init();
+    
+    // Move todos os processos da fila ready para o CFS
+    while (!is_queue_empty(&system_state.ready_queue)) {
+        PCB* process = dequeue_process(&system_state.ready_queue);
+        if (process != NULL) {
+            cfs_enqueue_process(process);
+        }
+    }
+    
+    // Loop principal do CFS
+    while (!system_state.generator_done || cfs_has_processes()) {
+        
+        // Adiciona novos processos que chegaram
+        while (!is_queue_empty(&system_state.ready_queue)) {
+            PCB* new_process = dequeue_process(&system_state.ready_queue);
+            if (new_process != NULL) {
+                cfs_enqueue_process(new_process);
+            }
+        }
+        
+        // Seleciona próximo processo (menor vruntime)
+        PCB* selected_process = cfs_pick_next();
+        
+        if (selected_process == NULL) {
+            usleep(10000); // 10ms - aguarda novos processos
+            continue;
+        }
+        
+        // Calcula timeslice baseado no peso do processo
+        int timeslice_us = cfs_get_timeslice(selected_process);
+        
+        add_log_message("[CFS] Executando processo PID %d\n", selected_process->pid);
+        
+        // Registra início da execução
+        log_process_start(scheduler_name, selected_process->pid);
+        
+        // Configura processo para execução
+        configure_process_state(selected_process);
+        
+        // Aguarda o processo executar completamente
+        pthread_mutex_lock(&selected_process->mutex);
+        while (selected_process->state == RUNNING) {
+            pthread_mutex_unlock(&selected_process->mutex);
+            usleep(50000); // 50ms - verifica estado do processo
+            pthread_mutex_lock(&selected_process->mutex);
+        }
+        
+        bool process_finished = (selected_process->state == FINISHED);
+        pthread_mutex_unlock(&selected_process->mutex);
+        
+        // Calcula tempo real executado (aproximado)
+        uint64_t runtime_ns = timeslice_us * 1000; // Converte para nanosegundos
+        
+        if (process_finished) {
+            // Processo terminou - registra no log
+            log_process_finish(scheduler_name, selected_process->pid);
+            add_log_message("[CFS] Processo PID %d finalizado\n", selected_process->pid);
+        } else {
+            // Processo foi preemptado - reinsere no CFS com vruntime atualizado
+            cfs_put_prev_process(selected_process, runtime_ns);
+        }
+        
+        usleep(1000); // 1ms entre contextos
+    }
+    
+    // Limpa sistema CFS
+    cfs_cleanup();
+    
+    add_log_message("Escalonador CFS finalizado\n");
 }
 
 void configure_process_state(PCB* pcb) {
@@ -553,6 +645,17 @@ static PCB* select_process_by_policy(void) {
         case ROUND_ROBIN:
             selected = dequeue_process(&system_state.ready_queue);
             break;
+        case CFS:
+            // Primeiro, adiciona novos processos ao CFS se houver
+            while (!is_queue_empty(&system_state.ready_queue)) {
+                PCB* new_process = dequeue_process(&system_state.ready_queue);
+                if (new_process != NULL) {
+                    cfs_enqueue_process(new_process);
+                }
+            }
+            // Agora seleciona o próximo processo do CFS
+            selected = cfs_pick_next();
+            break;
     }
     
     return selected;
@@ -690,9 +793,15 @@ void* multicore_scheduler_main(void* arg) {
     (void)arg; // Evitar warning de parâmetro não usado
     
     char log_buffer[256];
-    const char* policy_labels[] = {"", "FCFS", "RR", "PRIORITY"};
+    const char* policy_labels[] = {"", "FCFS", "RR", "PRIORITY", "CFS"};
     
     add_log_message("[DEBUG] Iniciando escalonador multiprocessador\n");
+    
+    // Inicializa CFS se for a política escolhida
+    if (system_state.scheduler_type == CFS) {
+        cfs_init();
+        add_log_message("[DEBUG] CFS inicializado no modo multiprocessador\n");
+    }
     
     while (true) {
         pthread_mutex_lock(&system_state.scheduler_mutex);
@@ -703,6 +812,12 @@ void* multicore_scheduler_main(void* arg) {
             break;
         }
         execute_scheduling_cycle(policy_labels, log_buffer);
+    }
+
+    // Limpa CFS se foi usado
+    if (system_state.scheduler_type == CFS) {
+        cfs_cleanup();
+        add_log_message("[DEBUG] CFS finalizado no modo multiprocessador\n");
     }
 
     add_essential_log_message("Escalonador terminou execução de todos processos\n");

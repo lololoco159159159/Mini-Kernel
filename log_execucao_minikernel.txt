@@ -1,0 +1,9 @@
+[CFS] Executando processo PID 1 // processador 0
+[CFS] Executando processo PID 1 // processador 1
+[CFS] Processo PID 1 finalizado
+[CFS] Executando processo PID 3 // processador 0
+[CFS] Executando processo PID 2 // processador 1
+[CFS] Processo PID 3 finalizado
+[CFS] Executando processo PID 2 // processador 1
+[CFS] Processo PID 2 finalizado
+Escalonador terminou execução de todos processos

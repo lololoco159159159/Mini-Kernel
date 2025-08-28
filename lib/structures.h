@@ -14,11 +14,16 @@ typedef enum {
 typedef enum {
     FCFS = 1,                   // First Come First Served
     ROUND_ROBIN = 2,            // Round Robin com quantum fixo
-    PRIORITY = 3                // Prioridade Preemptiva
+    PRIORITY = 3,               // Prioridade Preemptiva
+    CFS = 4                     // Completely Fair Scheduler (Desafio Tópico 8)
 } SchedulerType;
 
+// Constantes para Red-Black Tree (CFS)
+#define RB_RED   0
+#define RB_BLACK 1
+
 // Estrutura BCP - Bloco de Controle de Processo (conforme seção 2.8)
-typedef struct {
+typedef struct PCB {
     // Campos estáticos (definidos na criação)
     int pid;                    // Identificador único do processo (não confundir com getpid())
     int process_len;            // Duração total de execução em milissegundos
@@ -30,6 +35,15 @@ typedef struct {
     int remaining_time;         // Tempo restante de execução (decrementado pelas threads)
     ProcessState state;         // Estado atual: READY, RUNNING ou FINISHED
     volatile int should_preempt; // Flag para indicar preempção
+    
+    // Campos específicos para CFS (Completely Fair Scheduler) - Desafio Tópico 8
+    long long vruntime;         // Virtual runtime - tempo virtual acumulado (fairness)
+    int weight;                 // Peso baseado na prioridade nice para cálculo de fairness
+    long long start_vruntime;   // vruntime inicial para cálculo de diferenças
+    struct PCB* rb_left;        // Ponteiro para filho esquerdo na Red-Black Tree
+    struct PCB* rb_right;       // Ponteiro para filho direito na Red-Black Tree
+    struct PCB* rb_parent;      // Ponteiro para pai na Red-Black Tree
+    int rb_color;               // Cor do nó na RB Tree (0=preto, 1=vermelho)
     
     // Mecanismos de sincronização
     pthread_mutex_t mutex;      // Mutex exclusivo para controlar acesso concorrente

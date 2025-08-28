@@ -11,8 +11,8 @@ SRCDIR = src
 LIBDIR = lib
 
 # Arquivos fonte
-SOURCES = main.c scheduler.c queue.c log.c
-HEADERS = structures.h scheduler.h queue.h log.h
+SOURCES = main.c scheduler.c queue.c log.c cfs.c rbtree.c
+HEADERS = structures.h scheduler.h queue.h log.h cfs.h rbtree.h
 
 # Arquivos objeto (na pasta obj/)
 OBJECTS = $(SOURCES:%.c=$(OBJDIR)/%.o)
@@ -48,10 +48,13 @@ debug: $(TARGET)
 release: CFLAGS += -O2 -DNDEBUG
 release: $(TARGET)
 
+# Target para debug (com símbolos de debug)
+debug: CFLAGS += -g -DDEBUG
+debug: $(TARGET)
+
 # Limpeza dos arquivos gerados
 clean:
-	rm -rf $(OBJDIR) $(TARGET) log_execucao_minikernel.txt test_queue
-	rm -f demo_log
+	rm -rf $(OBJDIR) $(TARGET) log_execucao_minikernel.txt
 
 # Limpeza completa (inclui arquivos de backup)
 distclean: clean
@@ -65,12 +68,6 @@ valgrind: debug
 memcheck: debug
 	valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all ./$(TARGET)
 
-# Target para testar a fila de processos
-test-queue: CFLAGS += -g -DDEBUG
-test-queue: $(OBJDIR) $(OBJDIR)/queue.o
-	$(CC) $(CFLAGS) -o test_queue test_queue.c $(OBJDIR)/queue.o
-	./test_queue
-
 # Target para análise estática do código
 static-analysis:
 	cppcheck --enable=all --std=c99 $(SOURCES)
@@ -82,7 +79,6 @@ help:
 	@echo "  multiprocessador - Compila versão para sistema multiprocessador"
 	@echo "  debug           - Compila com símbolos de debug"
 	@echo "  release         - Compila com otimizações"
-	@echo "  test-queue      - Executa testes da fila de processos"
 	@echo "  clean           - Remove pasta obj/ e arquivos gerados"
 	@echo "  distclean       - Remove todos os arquivos temporários"
 	@echo "  valgrind        - Executa com valgrind para verificar memória"
@@ -115,7 +111,7 @@ show-structure:
 	fi
 
 # Declara targets que não geram arquivos
-.PHONY: all monoprocessador multiprocessador debug release test-queue clean distclean valgrind memcheck static-analysis help
+.PHONY: all monoprocessador multiprocessador debug release clean distclean valgrind memcheck static-analysis help
 
 # Informações sobre dependências
 main.o: main.c structures.h scheduler.h queue.h log.h

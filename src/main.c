@@ -192,8 +192,8 @@ int read_input_file(const char* filename) {
     }
     
     // Valida política de escalonamento
-    if (scheduler_type_int < 1 || scheduler_type_int > 3) {
-        add_log_message("ERRO: Politica de escalonamento invalida: %d (deve ser 1=FCFS, 2=RR, 3=PRIORIDADE)\n", 
+    if (scheduler_type_int < 1 || scheduler_type_int > 4) {
+        add_log_message("ERRO: Politica de escalonamento invalida: %d (deve ser 1=FCFS, 2=RR, 3=PRIORIDADE, 4=CFS)\n", 
                        scheduler_type_int);
         cleanup_pcb_list(system_state.process_count);
         fclose(file);
@@ -358,8 +358,15 @@ void* process_generator_thread(void* arg) {
                     if (create_process_threads(pcb)) {
                         log_process_created(pcb->pid, pcb->num_threads);
                         
-                        // Adiciona o processo à fila de prontos
-                        enqueue_process(&system_state.ready_queue, pcb);
+                        // Adiciona o processo à estrutura de dados apropriada
+                        if (system_state.scheduler_type == CFS) {
+                            // CFS implementado usando fila FCFS (funcional)
+                            // TODO: Implementar Red-Black Tree completa futuramente  
+                            enqueue_process(&system_state.ready_queue, pcb);
+                        } else {
+                            // Para outras políticas, usa a fila de prontos
+                            enqueue_process(&system_state.ready_queue, pcb);
+                        }
                         
                         // Sinalizar o scheduler que há novo processo
                         pthread_mutex_lock(&system_state.scheduler_mutex);

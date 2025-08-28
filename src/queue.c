@@ -2,24 +2,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-/*
- * =============================================================================
- * IMPLEMENTAÇÃO DA FILA DE PROCESSOS PRONTOS (READY QUEUE)
- * =============================================================================
- * 
- * Esta implementação usa uma lista encadeada simples com proteção thread-safe
- * através de mutexes. A fila suporta:
- * 
- * - Inserção no final (FIFO para FCFS)
- * - Remoção no início (FIFO para FCFS)  
- * - Remoção de elemento específico (para preempção)
- * - Busca por maior prioridade (para escalonamento por prioridade)
- * - Inserção ordenada por prioridade
- * - Operações thread-safe com mutex
- * 
- * Estrutura: front -> [PCB1] -> [PCB2] -> [PCB3] -> NULL <- rear
- * =============================================================================
- */
 
 void init_ready_queue(ReadyQueue* queue) {
     if (queue == NULL) return;

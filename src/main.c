@@ -15,7 +15,6 @@
 
 SystemState system_state;
 
-// Protótipos de funções
 int read_input_file(const char* filename);
 void* process_thread_function(void* arg);
 void* process_generator_thread(void* arg);

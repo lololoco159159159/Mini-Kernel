@@ -1,15 +1,16 @@
 # Mini-Kernel - Sistema de Escalonamento de Processos
 
+## 🚀 SEÇÃO EXTRA: Implementação do CFS
+Implementei uma rbtree e o cfs de maneira bem isolada de modo a não atrapalhar a implementação "normal" do projeto, então foi criado dois arquivos (cfs.c e rbtree.c)
+isolados para o ponto extra, a inteção é manter um projeto como entidade e cfs como entidade a parte.
+
+
 **Trabalho Prático - Sistemas Operacionais (INF15980)**  
 **Universidade Federal do Espírito Santo**
 
 ## Resumo
 
 Mini-kernel multithread em C que simula escalonamento de processos com três políticas: FCFS, Round-Robin e Prioridade Preemptiva. Implementa duas versões (mono e multiprocessador) usando threads POSIX para simular execução concorrente de processos com múltiplas threads.
-
-## 🚀 SEÇÃO EXTRA: Implementação do CFS
-Implementei uma rbtree e o cfs de maneira bem isolada de modo a não atrapalhar a implementação "normal" do projeto, então foi criado dois arquivos (cfs.c e rbtree.c)
-isolados para o ponto extra, a inteção é manter um projeto como entidade e cfs como entidade a parte.
 
 
 

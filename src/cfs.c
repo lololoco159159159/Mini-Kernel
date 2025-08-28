@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <pthread.h>
 
-// Estrutura principal do CFS - Thread-safe, usando apenas Red-Black Tree
+// Estrutura principal do CFS
 typedef struct {
     PCB* rb_root;                    // Raiz da Red-Black Tree
     uint64_t min_vruntime;           // Menor vruntime na árvore
@@ -17,7 +17,6 @@ typedef struct {
     int is_initialized;              // Flag de inicialização
 } CFSRunQueue;
 
-// Instância única do CFS
 static CFSRunQueue cfs_rq = {
     .rb_root = NULL,
     .min_vruntime = 0,
@@ -26,9 +25,6 @@ static CFSRunQueue cfs_rq = {
     .cfs_mutex = PTHREAD_MUTEX_INITIALIZER,
     .is_initialized = 0
 };
-
-// Instância única do CFS
-
 
 /**
  * Tabela de pesos por prioridade (baseada no kernel Linux)
@@ -90,7 +86,7 @@ static void cfs_update_vruntime(PCB* process, uint64_t runtime_ns) {
     }
 }
 
-// ========================= Interface Pública =========================
+// ========================= Interface  =========================
 
 void cfs_init() {
     pthread_mutex_lock(&cfs_rq.cfs_mutex);

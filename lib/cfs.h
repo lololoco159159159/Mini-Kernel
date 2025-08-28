@@ -1,9 +1,3 @@
-/**
- * CFS (Completely Fair Scheduler) Header
- * Interface pública do algoritmo CFS
- * Completamente isolado e thread-safe
- */
-
 #ifndef CFS_H
 #define CFS_H
 

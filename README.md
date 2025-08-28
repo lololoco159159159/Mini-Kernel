@@ -8,8 +8,8 @@
 Mini-kernel multithread em C que simula escalonamento de processos com três políticas: FCFS, Round-Robin e Prioridade Preemptiva. Implementa duas versões (mono e multiprocessador) usando threads POSIX para simular execução concorrente de processos com múltiplas threads.
 
 ## 🚀 SEÇÃO EXTRA: Implementação do CFS
-Implementei uma rbtree e o cpf de maneira bem isolada de modo a não atrapalhar a implementação "normal" do projeto, então foi criado dois arquivos (cfs.c e rbtree.c)
-isolados para o ponto extra.
+Implementei uma rbtree e o cfs de maneira bem isolada de modo a não atrapalhar a implementação "normal" do projeto, então foi criado dois arquivos (cfs.c e rbtree.c)
+isolados para o ponto extra, a inteção é manter um projeto como entidade e cfs como entidade a parte.
 
 
 
@@ -27,7 +27,7 @@ isolados para o ponto extra.
 <num_processos>
 <duracao> <prioridade> <num_threads> <tempo_chegada>
 ...
-<politica>  // 1=FCFS, 2=RR, 3=Prioridade
+<politica>  // 1=FCFS, 2=RR, 3=Prioridade 4=CFS
 ```
 
 ## Saída

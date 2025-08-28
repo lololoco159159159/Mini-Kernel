@@ -714,12 +714,35 @@ static void allocate_new_processes_to_cpus(const char* policy_labels[], char* lo
         if (system_state.current_process_array[processor] != NULL) {
             continue; // CPU ocupado
         }
-        
-        PCB* new_process = select_process_by_policy();
+
+        PCB* new_process = NULL;
+        int try_count = 0;
+        do {
+            new_process = select_process_by_policy();
+            if (system_state.scheduler_type != CFS || new_process == NULL)
+                break;
+            // Para CFS: só aloque se não está em uso em outro CPU
+            bool already_in_use = false;
+            for (int i = 0; i < system_state.num_cpus; i++) {
+                if (system_state.current_process_array[i] == new_process) {
+                    already_in_use = true;
+                    break;
+                }
+            }
+            if (!already_in_use) {
+                break;
+            } else {
+                // Se já está em uso, devolve para o CFS e tenta pegar outro
+                cfs_put_prev_process(new_process, 0); // 0 ns, só para devolver
+                new_process = NULL;
+            }
+            try_count++;
+        } while (try_count < 10); // Evita loop infinito
+
         if (new_process == NULL) {
             continue; // Nenhum processo disponível
         }
-        
+
         assign_process_to_cpu(new_process, processor, policy_labels, log_buffer);
         try_multithread_expansion(new_process, processor, policy_labels, log_buffer);
     }
